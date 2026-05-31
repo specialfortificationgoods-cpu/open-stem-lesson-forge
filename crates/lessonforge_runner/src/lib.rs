@@ -6,9 +6,12 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
+use std::io::Read as _;
 use std::path::{Component, Path, PathBuf};
 
 use thiserror::Error;
+
+const MAX_ED25519_KEY_FILE_BYTES: u64 = 1024;
 
 pub fn crate_boundary() -> &'static str {
     "local_runner"
@@ -981,10 +984,82 @@ fn seal_self_test_report(
 fn signing_key_from_config(
     validated: &ValidatedRunnerConfig,
 ) -> Result<SigningKey, RunnerOutputError> {
-    let bytes = fs::read(&validated.config.attestation.ed25519_private_key_path)
-        .map_err(|_| RunnerOutputError::OutputUnavailable)?;
+    let bytes = read_bounded_ed25519_key_file(Path::new(
+        &validated.config.attestation.ed25519_private_key_path,
+    ))
+    .map_err(|_| RunnerOutputError::OutputUnavailable)?;
     let seed = parse_ed25519_seed(&bytes).ok_or(RunnerOutputError::OutputUnavailable)?;
     Ok(SigningKey::from_bytes(&seed))
+}
+
+fn read_bounded_ed25519_key_file(path: &Path) -> Result<Vec<u8>, std::io::Error> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.file_type().is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "ed25519 key path is not a regular file",
+        ));
+    }
+    let mut file = open_key_file_without_following_symlinks(path)?;
+    let opened_metadata = file.metadata()?;
+    if !opened_metadata.file_type().is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "ed25519 key path is not a regular file",
+        ));
+    }
+    if opened_metadata.len() > MAX_ED25519_KEY_FILE_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "ed25519 key file too large",
+        ));
+    }
+    let mut bytes = Vec::new();
+    file.by_ref()
+        .take(MAX_ED25519_KEY_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_ED25519_KEY_FILE_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "ed25519 key file too large",
+        ));
+    }
+    Ok(bytes)
+}
+
+#[cfg(unix)]
+fn open_key_file_without_following_symlinks(path: &Path) -> Result<fs::File, std::io::Error> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    #[cfg(target_os = "linux")]
+    const O_NOFOLLOW: i32 = 0o400000;
+    #[cfg(any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
+    const O_NOFOLLOW: i32 = 0x0100;
+    #[cfg(not(any(
+        target_os = "linux",
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    )))]
+    const O_NOFOLLOW: i32 = 0;
+
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(O_NOFOLLOW)
+        .open(path)
+}
+
+#[cfg(not(unix))]
+fn open_key_file_without_following_symlinks(path: &Path) -> Result<fs::File, std::io::Error> {
+    fs::File::open(path)
 }
 
 fn parse_ed25519_seed(bytes: &[u8]) -> Option<[u8; 32]> {
@@ -1323,8 +1398,14 @@ fn validate_attestation_config(config: &RunnerConfig) -> Result<(), RunnerConfig
     let key_path = Path::new(&config.attestation.ed25519_private_key_path);
     reject_unsafe_path_components(key_path)
         .map_err(|_| RunnerConfigError::InvalidAttestationConfig)?;
-    if !key_path.starts_with(Path::new(&config.runner.workspace_root))
-        || fs::read(key_path)
+    let workspace_root = Path::new(&config.runner.workspace_root)
+        .canonicalize()
+        .map_err(|_| RunnerConfigError::InvalidAttestationConfig)?;
+    let canonical_key_path = key_path
+        .canonicalize()
+        .map_err(|_| RunnerConfigError::InvalidAttestationConfig)?;
+    if !canonical_key_path.starts_with(&workspace_root)
+        || read_bounded_ed25519_key_file(key_path)
             .ok()
             .and_then(|bytes| parse_ed25519_seed(&bytes))
             .is_none()

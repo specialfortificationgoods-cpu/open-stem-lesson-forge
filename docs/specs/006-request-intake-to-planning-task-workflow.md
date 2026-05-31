@@ -469,7 +469,7 @@ MVP retry limit:
 
 When retry limit is not exceeded, the task returns to `open`.
 
-When retry limit is exceeded, the task transitions to `cancelled` with safe reason code `planning_abandoned_retry_limit`. The request transitions to `requested`; no work packets or artifacts are created. Spec `008` defines only the transport/API projection of this deterministic transition.
+When retry limit is exceeded, the task transitions to `cancelled` and the parent request transitions from `planning_open` or `planning_in_progress` to `planning_failed` with safe reason code `planning_abandoned_retry_limit`; no work packets, proposed graphs, selected plans, or artifacts are created. Spec `008` defines only the transport/API projection of this deterministic transition.
 
 ## No Central Semantic Decomposition
 

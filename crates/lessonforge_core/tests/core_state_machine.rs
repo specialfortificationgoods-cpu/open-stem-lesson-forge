@@ -83,6 +83,14 @@ fn request_transitions_follow_spec_005_guards() {
         Ok(RequestState::PlanningInProgress)
     );
     assert_eq!(
+        RequestState::PlanningOpen.transition(RequestTransition::PlanningFailed),
+        Ok(RequestState::PlanningFailed)
+    );
+    assert_eq!(
+        RequestState::PlanningInProgress.transition(RequestTransition::PlanningFailed),
+        Ok(RequestState::PlanningFailed)
+    );
+    assert_eq!(
         RequestState::PlanningInProgress.transition(RequestTransition::ProposalStored),
         Ok(RequestState::PlanProposed)
     );
@@ -141,12 +149,56 @@ fn planning_task_transitions_reopen_on_retryable_lease_end() {
         }),
         Ok(PlanningTaskState::Submitted)
     );
+    assert_eq!(
+        PlanningTaskState::Claimed.after_lease_end(PlanningLeaseFacts {
+            active_lease_count: 0,
+            valid_proposal_submitted: false,
+            retry_allowed: false,
+        }),
+        Ok(PlanningTaskState::Cancelled)
+    );
 
     assert!(
         PlanningTaskState::Completed
             .transition(PlanningTaskTransition::Claim)
             .is_err()
     );
+}
+
+#[test]
+fn planning_retry_exhaustion_has_terminal_request_and_task_state() -> Result<(), Box<dyn Error>> {
+    let context = TransitionContext {
+        event_id: "event_planning_retry_exhausted".to_owned(),
+        entity_type: "request".to_owned(),
+        entity_id: RequestId::try_from("req_energy_pack")?.to_string(),
+        scope_id: "scope_energy".to_owned(),
+        actor_id: ActorId::try_from("actor_system_core")?,
+        actor_type: ActorType::SystemCore,
+        command_id: "cmd_planning_retry_exhausted".to_owned(),
+        action: "spoofed_context_action".to_owned(),
+        reason_code: "planning_abandoned_retry_limit".to_owned(),
+        safe_field_path: Some("/state".to_owned()),
+        related_ids: vec!["ptask_energy_plan".to_owned()],
+        occurred_at: 200,
+    };
+
+    let applied = RequestState::PlanningInProgress
+        .apply_transition(RequestTransition::PlanningFailed, context)?;
+
+    assert_eq!(applied.next_state, RequestState::PlanningFailed);
+    assert_eq!(applied.event.previous_state, "planning_in_progress");
+    assert_eq!(applied.event.next_state, "planning_failed");
+    assert_eq!(applied.event.action, "planning_failed");
+    assert_eq!(applied.event.reason_code, "planning_abandoned_retry_limit");
+    assert_eq!(
+        PlanningTaskState::Claimed.after_lease_end(PlanningLeaseFacts {
+            active_lease_count: 0,
+            valid_proposal_submitted: false,
+            retry_allowed: false,
+        }),
+        Ok(PlanningTaskState::Cancelled)
+    );
+    Ok(())
 }
 
 #[test]

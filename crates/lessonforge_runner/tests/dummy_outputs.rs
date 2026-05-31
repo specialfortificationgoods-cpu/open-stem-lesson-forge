@@ -209,6 +209,57 @@ fn dummy_generator_requires_valid_attestation_config() -> Result<(), Box<dyn Err
         .to_string();
     assert_eq!(config_error_code(&wrong_path), "invalid_attestation_config");
 
+    let large_key_dir = temp.path().join("large-key");
+    std::fs::create_dir_all(&large_key_dir)?;
+    let large_key_path = large_key_dir.join("runner.hex");
+    std::fs::write(&large_key_path, vec![b'a'; 2048])?;
+    let mut large_key = dummy_config_with_workspace(
+        "runner_dummy_generator_001",
+        "Dummy Generator",
+        RunnerMode::DummyGenerator,
+        temp.path(),
+    );
+    large_key.attestation.runner_key_id = "rkey_dummy_generator_001".to_owned();
+    large_key.attestation.ed25519_private_key_path = large_key_path.display().to_string();
+    assert_eq!(config_error_code(&large_key), "invalid_attestation_config");
+
+    #[cfg(unix)]
+    {
+        let outside = tempfile::tempdir()?;
+        let outside_key = outside.path().join("runner.hex");
+        std::fs::write(&outside_key, hex_seed(&[8; 32]))?;
+        let symlink_key_path = temp.path().join("keys").join("symlink-runner.hex");
+        let Some(key_parent) = symlink_key_path.parent() else {
+            return Err("symlink key path should have parent".into());
+        };
+        std::fs::create_dir_all(key_parent)?;
+        std::os::unix::fs::symlink(&outside_key, &symlink_key_path)?;
+        let mut symlink_key = dummy_config_with_workspace(
+            "runner_dummy_generator_001",
+            "Dummy Generator",
+            RunnerMode::DummyGenerator,
+            temp.path(),
+        );
+        symlink_key.attestation.runner_key_id = "rkey_dummy_generator_001".to_owned();
+        symlink_key.attestation.ed25519_private_key_path = symlink_key_path.display().to_string();
+        assert_eq!(
+            config_error_code(&symlink_key),
+            "invalid_attestation_config"
+        );
+
+        let socket_key_path = temp.path().join("keys").join("socket-runner.hex");
+        let _socket = std::os::unix::net::UnixListener::bind(&socket_key_path)?;
+        let mut socket_key = dummy_config_with_workspace(
+            "runner_dummy_generator_001",
+            "Dummy Generator",
+            RunnerMode::DummyGenerator,
+            temp.path(),
+        );
+        socket_key.attestation.runner_key_id = "rkey_dummy_generator_001".to_owned();
+        socket_key.attestation.ed25519_private_key_path = socket_key_path.display().to_string();
+        assert_eq!(config_error_code(&socket_key), "invalid_attestation_config");
+    }
+
     let mut planner_with_key = dummy_config(
         "runner_dummy_planner_001",
         "Dummy Planner",

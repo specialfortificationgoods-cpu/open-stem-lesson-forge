@@ -47,6 +47,22 @@ fn review_task_creation_requires_current_parent_state_and_work_packet_dependency
             ..review_context()?
         },
         ReviewContext {
+            request_state: RequestState::Rejected,
+            ..review_context()?
+        },
+        ReviewContext {
+            request_state: RequestState::PlanningOpen,
+            ..review_context()?
+        },
+        ReviewContext {
+            request_state: RequestState::PlanningInProgress,
+            ..review_context()?
+        },
+        ReviewContext {
+            request_state: RequestState::PlanningFailed,
+            ..review_context()?
+        },
+        ReviewContext {
             proposal_state: ProposedTaskGraphState::Superseded,
             ..review_context()?
         },
@@ -499,6 +515,24 @@ fn finding_policy_rejects_invalid_severity_unsafe_text_and_laundered_blocking_fl
         "student roster: Bob Chen",
         "student@example.test",
         "Parent phone 555-123-4567",
+        "5551234567",
+        "2125550199",
+        "5551234567x123",
+        "15551234567",
+        "call me at 555/123/4567",
+        "555/123/4567 phone",
+        "phone is 555-1234",
+        "contact 44 20 7946 0958",
+        "my cell is 555-1234",
+        "555-1234 cell",
+        "cell phone is 555-1234",
+        "telephone 555-1234",
+        "5551234 phone",
+        "+44 20 7946 0958",
+        "+1 5551234567",
+        "+44 2079460958",
+        "phone +1 5551234567",
+        "contact 44 2079460958",
         "Charlie Chen: 90%",
         "Charlie Li: 90/100",
         "Quiz score % 85",
@@ -544,6 +578,32 @@ fn finding_policy_rejects_invalid_severity_unsafe_text_and_laundered_blocking_fl
         )?)?,
         safe_percentage,
     )?;
+
+    for safe_value in [
+        "Use ISBN 9780131103627 as a source note",
+        "Use ISBN 0131103628 as a source note",
+        "Use EAN 400 638 1333931 as an example identifier",
+        "Compute 1+23456789 using mental math",
+    ] {
+        let mut safe_numeric_text = ReviewSubmission::approved_no_findings();
+        safe_numeric_text.findings = vec![FindingInput {
+            severity: FindingSeverity::Minor,
+            finding_type: FindingType::OtherSafe,
+            safe_location: "worksheet".to_owned(),
+            safe_message: safe_value.to_owned(),
+            submitted_blocking: None,
+            submitted_authority_fields: Vec::new(),
+        }];
+        submit_review(
+            create_review_task(review_context()?)?,
+            review_claim_context(qualified_reviewer(
+                "actor_reviewer_001",
+                "operator_reviewer",
+                "conflict_reviewer",
+            )?)?,
+            safe_numeric_text,
+        )?;
+    }
     Ok(())
 }
 
@@ -758,6 +818,30 @@ fn review_submission_rejects_quarantined_or_superseded_parent_context() -> Resul
     for context in [
         ReviewClaimContext {
             request_state: RequestState::Quarantined,
+            ..review_claim_context(reviewer.clone())?
+        },
+        ReviewClaimContext {
+            request_state: RequestState::Rejected,
+            ..review_claim_context(reviewer.clone())?
+        },
+        ReviewClaimContext {
+            request_state: RequestState::Requested,
+            ..review_claim_context(reviewer.clone())?
+        },
+        ReviewClaimContext {
+            request_state: RequestState::ModerationPending,
+            ..review_claim_context(reviewer.clone())?
+        },
+        ReviewClaimContext {
+            request_state: RequestState::PlanningOpen,
+            ..review_claim_context(reviewer.clone())?
+        },
+        ReviewClaimContext {
+            request_state: RequestState::PlanningInProgress,
+            ..review_claim_context(reviewer.clone())?
+        },
+        ReviewClaimContext {
+            request_state: RequestState::PlanningFailed,
             ..review_claim_context(reviewer.clone())?
         },
         ReviewClaimContext {

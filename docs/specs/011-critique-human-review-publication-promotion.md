@@ -419,7 +419,7 @@ Deferred quorum policies must not be implied by MVP state names.
 
 ## Appeal, Reopen, Repair, and Deprecation
 
-MVP does not implement appeal or repair loops.
+MVP does not implement appeal workflows or human-review-finding repair loops. The separate generated-code repair loop defined in Spec `014` remains in MVP scope and remains non-authoritative for approval or publication promotion.
 
 Allowed curator/admin actions:
 

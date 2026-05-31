@@ -550,6 +550,7 @@ Side effects:
 - allocate deterministic lease slot;
 - create active `Lease`;
 - move task `open -> claimed` on first active lease or keep `claimed`;
+- move the parent request `planning_open -> planning_in_progress` on the first active planning lease;
 - emit safe event.
 
 Response `201`:
@@ -575,6 +576,7 @@ Errors:
 - `409 planning_claim_slots_full`
 - `409 actor_already_holds_active_planning_slot`
 - `409 planning_task_completed_or_cancelled`
+- `409 request_planning_failed`
 
 ### `POST /v1/planning-tasks/{planning_task_id}/heartbeat`
 
@@ -1579,6 +1581,18 @@ Expected:
 - Request advances to `planning_open`.
 - Exactly one planning task is created.
 - Replay returns existing result without duplicate moderation report, planning task, or events.
+
+### API-001A.1: Planning retry exhaustion fails request without materialization
+
+Expire or release all active planning leases without an accepted proposal until `max_claim_attempts=3` is exceeded.
+
+Expected:
+
+- Planning task becomes `cancelled`.
+- Request advances to terminal internal state `planning_failed`.
+- Safe event reason code is `planning_abandoned_retry_limit`.
+- No proposed graph, selected plan, work packet, artifact, or review task is created.
+- Later planning claims and submissions are rejected replay-stably with safe conflict codes.
 
 ### API-001B: Rejected or forged moderation blocks planning
 

@@ -146,6 +146,7 @@ pub enum RequestState {
     Quarantined,
     PlanningOpen,
     PlanningInProgress,
+    PlanningFailed,
     PlanProposed,
     Decomposed,
     ArtifactDrafted,
@@ -162,6 +163,7 @@ string_enum!(RequestState {
     Quarantined => "quarantined",
     PlanningOpen => "planning_open",
     PlanningInProgress => "planning_in_progress",
+    PlanningFailed => "planning_failed",
     PlanProposed => "plan_proposed",
     Decomposed => "decomposed",
     ArtifactDrafted => "artifact_drafted",
@@ -191,6 +193,9 @@ impl RequestState {
             (Self::PlanningOpen, RequestTransition::PlanningLeaseActive) => {
                 Ok(Self::PlanningInProgress)
             }
+            (Self::PlanningOpen | Self::PlanningInProgress, RequestTransition::PlanningFailed) => {
+                Ok(Self::PlanningFailed)
+            }
             (Self::PlanningInProgress, RequestTransition::ProposalStored) => Ok(Self::PlanProposed),
             (Self::PlanProposed, RequestTransition::PromotionAccepted) => Ok(Self::Decomposed),
             (Self::Decomposed, RequestTransition::ArtifactBundleAccepted) => {
@@ -208,6 +213,7 @@ impl RequestState {
                 | Self::ModerationPassed
                 | Self::PlanningOpen
                 | Self::PlanningInProgress
+                | Self::PlanningFailed
                 | Self::PlanProposed
                 | Self::Decomposed
                 | Self::ArtifactDrafted
@@ -257,6 +263,7 @@ pub enum RequestTransition {
     ModerationAllowsPlanning,
     CreatePlanningTask,
     PlanningLeaseActive,
+    PlanningFailed,
     ProposalStored,
     PromotionAccepted,
     ArtifactBundleAccepted,
@@ -274,6 +281,7 @@ string_enum!(RequestTransition {
     ModerationAllowsPlanning => "moderation_allows_planning",
     CreatePlanningTask => "create_planning_task",
     PlanningLeaseActive => "planning_lease_active",
+    PlanningFailed => "planning_failed",
     ProposalStored => "proposal_stored",
     PromotionAccepted => "promotion_accepted",
     ArtifactBundleAccepted => "artifact_bundle_accepted",

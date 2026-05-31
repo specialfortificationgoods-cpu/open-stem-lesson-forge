@@ -183,7 +183,7 @@ fn load_manifest(root: &Path) -> Result<Manifest, String> {
         .join("docs")
         .join("implementation")
         .join("mvp-test-manifest.json");
-    let text = fs::read_to_string(path).map_err(|_| "manifest_unavailable".to_owned())?;
+    let text = fs::read_to_string(&path).map_err(|_| "manifest_unavailable".to_owned())?;
     serde_json::from_str(&text).map_err(|_| "manifest_invalid_json".to_owned())
 }
 
@@ -417,6 +417,24 @@ mod tests {
             scan_source_tree_for_absence(&missing, &["websocket_command"]),
             Err("negative_surface_scan_failed".to_owned())
         );
+        Ok(())
+    }
+
+    #[test]
+    fn manifest_load_errors_do_not_echo_root_paths_or_os_errors()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let unsafe_root = temp.path().join("sk-proj-redaction-test");
+        let Err(error) = load_manifest(&unsafe_root) else {
+            return Err("missing manifest should fail".into());
+        };
+
+        assert_eq!(error, "manifest_unavailable");
+        let rendered_root = unsafe_root.display().to_string();
+        assert!(!error.contains(&rendered_root));
+        assert!(!error.contains("sk-"));
+        assert!(!error.contains("/private/tmp"));
+        assert!(!error.contains("No such file"));
         Ok(())
     }
 }

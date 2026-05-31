@@ -194,6 +194,7 @@ States:
 - `quarantined`
 - `planning_open`
 - `planning_in_progress`
+- `planning_failed`
 - `plan_proposed`
 - `decomposed`
 - `artifact_drafted`
@@ -214,12 +215,13 @@ Allowed transitions:
 | `moderation_pending` | `moderation_passed` | system_core | Accepted moderation report allows MVP planning. |
 | `moderation_passed` | `planning_open` | system_core | Planning task created after moderation gate. |
 | `planning_open` | `planning_in_progress` | system_core | Planning task lease is active. |
+| `planning_open` or `planning_in_progress` | `planning_failed` | system_core | Planning task exhausted deterministic retry policy without an accepted proposal; safe reason code required. |
 | `planning_in_progress` | `plan_proposed` | system_core | At least one proposal stored. |
 | `plan_proposed` | `decomposed` | system_core | Promotion decision accepted and work packets materialized. |
 | `decomposed` | `artifact_drafted` | system_core | Selected MVP artifact bundle draft accepted. |
 | `artifact_drafted` | `machine_validated` | system_core | Selected MVP artifact bundle passed trusted deterministic validation. |
 | `machine_validated` | `peer_reviewed` | system_core | Selected MVP artifact bundle passed required human approval gates. |
-| any non-terminal | `deprecated` | curator or admin | Safe reason code provided. |
+| any non-terminal including `planning_failed` | `deprecated` | curator or admin | Safe reason code provided. |
 
 Request state is an aggregate summary. It does not replace proposal, work packet, artifact, or review state.
 
@@ -362,7 +364,7 @@ Allowed transitions:
 | `submitted` | `completed` | system_core | Proposal persisted and task terminal for this claim. |
 | `claimed` | `open` | system_core | Active lease expired and retry is allowed. |
 | `claimed` | `open` | lease holder via system_core | Lease released and retry is allowed. |
-| `open` or `claimed` | `cancelled` | curator/admin/system_core | Request rejected/quarantined/deprecated. |
+| `open` or `claimed` | `cancelled` | curator/admin/system_core | Request rejected/quarantined/deprecated, or retry limit exhausted with request transition to `planning_failed`. |
 
 Planning task state never means the proposal is valid or promoted.
 

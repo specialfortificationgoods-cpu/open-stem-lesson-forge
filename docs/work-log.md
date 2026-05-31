@@ -557,3 +557,5 @@
   - The no-leak fixture scanner now trims the same safe glue words as request intake before matching contact context, and both request intake and fixture scanner tests cover the parity cases.
   - Final targeted adversarial re-review returned `PASS` for phone-context parsing parity and runner TLS loopback pinned-policy validation.
   - CodeRabbit resubmission raised two minor schema-bound findings; accepted both and tightened the closed fixture schemas for artifact manifest `contents` bounds and single-entry dummy moderation report category/reason arrays.
+  - Follow-up CodeRabbit resubmission raised seven additional findings; accepted the spec wording, schema uniqueness/bounds, bounded runner key-file read, e2e manifest diagnostics, and context-aware review-text phone heuristics for this loop.
+  - Final adversarial review found a planning retry-exhaustion state ambiguity; accepted it and added a closed `planning_failed` request transition paired with `PlanningTask.cancelled` for `planning_abandoned_retry_limit`.
