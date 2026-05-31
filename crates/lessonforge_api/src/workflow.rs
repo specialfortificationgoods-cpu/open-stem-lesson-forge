@@ -141,7 +141,11 @@ impl DeterministicWorkflow {
         &mut self,
         report: ModerationReportSubmission,
     ) -> Result<ModerationApplicationOutcome, RequestWorkflowError> {
-        let payload_digest = moderation_report_payload_digest(&report);
+        let payload_digest = moderation_report_payload_digest(&report).map_err(|_| {
+            RequestWorkflowError::ModerationRejected {
+                reason: "moderation_report_digest_unavailable",
+            }
+        })?;
         let Some(request) = &self.request else {
             return Err(RequestWorkflowError::ModerationRejected {
                 reason: "request_not_found",
@@ -798,7 +802,9 @@ fn append_len(canonical: &mut String, label: &str, value: &str) {
     canonical.push_str(value);
 }
 
-fn moderation_report_payload_digest(report: &ModerationReportSubmission) -> String {
+fn moderation_report_payload_digest(
+    report: &ModerationReportSubmission,
+) -> serde_json::Result<String> {
     let mut canonical = String::new();
     append_len(
         &mut canonical,
@@ -807,20 +813,25 @@ fn moderation_report_payload_digest(report: &ModerationReportSubmission) -> Stri
     );
     append_len(&mut canonical, "request_id", report.request_id.as_str());
     append_len(&mut canonical, "lease_id", report.lease_id.as_str());
-    append_serialized(&mut canonical, "moderation_kind", &report.moderation_kind);
-    append_serialized(&mut canonical, "decision", &report.decision);
-    append_serialized(&mut canonical, "category_flags", &report.category_flags);
+    append_serialized(&mut canonical, "moderation_kind", &report.moderation_kind)?;
+    append_serialized(&mut canonical, "decision", &report.decision)?;
+    append_serialized(&mut canonical, "category_flags", &report.category_flags)?;
     append_serialized(
         &mut canonical,
         "safe_reason_codes",
         &report.safe_reason_codes,
-    );
-    digest_hex(canonical)
+    )?;
+    Ok(digest_hex(canonical))
 }
 
-fn append_serialized<T: serde::Serialize>(canonical: &mut String, label: &str, value: &T) {
-    let encoded = serde_json::to_string(value).unwrap_or_else(|_| "null".to_owned());
+fn append_serialized<T: serde::Serialize>(
+    canonical: &mut String,
+    label: &str,
+    value: &T,
+) -> serde_json::Result<()> {
+    let encoded = serde_json::to_string(value)?;
     append_len(canonical, label, &encoded);
+    Ok(())
 }
 
 fn digest_hex(input: String) -> String {

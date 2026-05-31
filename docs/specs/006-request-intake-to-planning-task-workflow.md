@@ -249,7 +249,7 @@ When intake passes, the central backend atomically creates:
 - one `RequestModerationTask` in `open`;
 - transition events for both records.
 
-In the same transaction, after the moderation task exists, internal `Request.state` advances to `moderation_pending` as defined by spec `005`. Public/API fixtures may continue to expose the intake status value `requested` until spec `008` defines the exact response projection. The internal state and public projection must be tested separately so the public fixture does not become authority over the state machine.
+In the same transaction, after the moderation task exists, internal `Request.state` advances to `moderation_pending` as defined by spec `005`. Public/API fixtures must follow the response projection behavior defined in spec `008`, while internal `Request.state` remains the authoritative state machine and must be tested separately from public projection.
 
 The `RequestModerationTask` contains:
 
