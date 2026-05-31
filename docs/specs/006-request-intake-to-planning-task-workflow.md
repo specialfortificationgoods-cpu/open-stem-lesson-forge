@@ -448,8 +448,10 @@ Central handling:
 - Reject stale, expired, released, consumed, revoked, or replaced leases.
 - Reject cross-scope or cross-request submissions.
 - Reject self-inconsistent submitted IDs.
-- On successful first submission, persist one proposed graph, consume the submitting lease, revoke all other active planning leases for that task with safe reason `planning_min_proposals_satisfied`, and move the task to `completed`.
-- After `min_accepted_proposals=1` is satisfied, later submissions for other fanout slots are rejected as stale/no-longer-needed and cannot create verification tasks, selected plans, promotion decisions, work packets, or non-selected evidence in the MVP.
+- On successful first submission, persist one proposed graph in `proposed` state and consume the submitting lease. Other active planning leases remain active until the submitted graph reaches `schema_policy_validated` or is deterministically rejected.
+- When a submitted graph reaches `schema_policy_validated` and `min_accepted_proposals=1` is satisfied, revoke all other active planning leases for that task with safe reason `planning_min_proposals_satisfied`, move the planning task to `completed`, and reject later submissions for other fanout slots as stale/no-longer-needed.
+- If the first submitted graph is rejected before `schema_policy_validated`, the planning task remains claimable according to the retry and lease rules; stale fanout slots are not closed merely because a raw submission exists.
+- After `min_accepted_proposals=1` is satisfied, later submissions for other fanout slots cannot create verification tasks, selected plans, promotion decisions, work packets, or non-selected evidence in the MVP.
 - Replaying the same lease/idempotency key and identical payload returns the original result.
 - Replaying the same key with a changed payload is rejected.
 

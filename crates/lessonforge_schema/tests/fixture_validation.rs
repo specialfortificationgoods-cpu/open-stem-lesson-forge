@@ -121,6 +121,25 @@ fn proposed_task_graph_fixture_rejects_lineage_and_policy_drift() -> Result<(), 
         };
     assert_eq!(validation_policy_error.code, "invalid_execution_policy");
 
+    let mut graph_with_validation_lesson_output = valid_graph();
+    graph_with_validation_lesson_output["proposed_tasks"][1]["outputs"] = json!(["worksheet.md"]);
+    let validation_output_error =
+        match validate_proposed_task_graph(&graph_with_validation_lesson_output) {
+            Ok(()) => return Err("validation task lesson output should reject".into()),
+            Err(error) => error,
+        };
+    assert_eq!(validation_output_error.code, "invalid_validation_outputs");
+
+    let mut graph_with_review_validation_output = valid_graph();
+    graph_with_review_validation_output["proposed_tasks"][2]["outputs"] =
+        json!(["validation_report.json"]);
+    let review_output_error =
+        match validate_proposed_task_graph(&graph_with_review_validation_output) {
+            Ok(()) => return Err("review task validation output should reject".into()),
+            Err(error) => error,
+        };
+    assert_eq!(review_output_error.code, "invalid_review_outputs");
+
     let mut graph = valid_graph();
     graph["source_request_summary"]["duration_minutes"] = json!(60);
 
@@ -388,7 +407,7 @@ fn fixture_set_rejects_schema_and_example_drift() -> Result<(), Box<dyn Error>> 
             .path()
             .join("schemas/proposed_task_graph.schema.json"),
     )?)?;
-    schema["properties"]["proposed_tasks"]["items"]["anyOf"][0]["properties"]["task_type"]["type"] =
+    schema["properties"]["proposed_tasks"]["prefixItems"][0]["properties"]["task_type"]["type"] =
         json!("strnig");
     fs::write(
         bad_any_of_temp
@@ -397,7 +416,7 @@ fn fixture_set_rejects_schema_and_example_drift() -> Result<(), Box<dyn Error>> 
         serde_json::to_string_pretty(&schema)?,
     )?;
     let bad_any_of_error = match verify_fixture_set(bad_any_of_temp.path()) {
-        Ok(_) => return Err("unsupported schema type in anyOf branch should reject".into()),
+        Ok(_) => return Err("unsupported schema type in prefixItems branch should reject".into()),
         Err(error) => error,
     };
     assert_eq!(bad_any_of_error.code, "schema_compile_failed");
@@ -416,9 +435,9 @@ fn fixture_set_rejects_schema_and_example_drift() -> Result<(), Box<dyn Error>> 
             .path()
             .join("schemas/proposed_task_graph.schema.json"),
     )?)?;
-    schema["properties"]["proposed_tasks"]["items"]["anyOf"]
+    schema["properties"]["proposed_tasks"]["prefixItems"]
         .as_array_mut()
-        .ok_or("expected proposed_tasks anyOf")?
+        .ok_or("expected proposed_tasks prefixItems")?
         .push(json!({}));
     fs::write(
         empty_any_of_branch_temp
@@ -427,7 +446,7 @@ fn fixture_set_rejects_schema_and_example_drift() -> Result<(), Box<dyn Error>> 
         serde_json::to_string_pretty(&schema)?,
     )?;
     let empty_any_of_branch_error = match verify_fixture_set(empty_any_of_branch_temp.path()) {
-        Ok(_) => return Err("empty anyOf branch should reject".into()),
+        Ok(_) => return Err("empty prefixItems branch should reject".into()),
         Err(error) => error,
     };
     assert_eq!(empty_any_of_branch_error.code, "schema_compile_failed");
@@ -449,9 +468,9 @@ fn fixture_set_rejects_schema_and_example_drift() -> Result<(), Box<dyn Error>> 
             .path()
             .join("schemas/proposed_task_graph.schema.json"),
     )?)?;
-    schema["properties"]["proposed_tasks"]["items"]["anyOf"]
+    schema["properties"]["proposed_tasks"]["prefixItems"]
         .as_array_mut()
-        .ok_or("expected proposed_tasks anyOf")?
+        .ok_or("expected proposed_tasks prefixItems")?
         .push(json!(false));
     fs::write(
         scalar_any_of_branch_temp
@@ -460,7 +479,7 @@ fn fixture_set_rejects_schema_and_example_drift() -> Result<(), Box<dyn Error>> 
         serde_json::to_string_pretty(&schema)?,
     )?;
     let scalar_any_of_branch_error = match verify_fixture_set(scalar_any_of_branch_temp.path()) {
-        Ok(_) => return Err("scalar anyOf branch should reject".into()),
+        Ok(_) => return Err("scalar prefixItems branch should reject".into()),
         Err(error) => error,
     };
     assert_eq!(scalar_any_of_branch_error.code, "schema_compile_failed");
@@ -729,7 +748,7 @@ fn valid_artifact_manifest() -> Value {
     json!({
         "artifact_id": "art_energy_001",
         "request_id": "req_energy_001",
-        "work_packet_ids": ["wp_generate"],
+        "work_packet_ids": ["wp_energy_001_generate_pack"],
         "title": "Conservation of energy lesson pack",
         "subject": "physics",
         "topic": "conservation_of_energy",

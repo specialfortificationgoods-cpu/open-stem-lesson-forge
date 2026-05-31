@@ -81,7 +81,7 @@ fn artifact_digests_are_deterministic_and_tamper_sensitive() -> Result<(), Box<d
     );
     assert_eq!(
         first.bundle_digest,
-        "sha256:417e6f228aae3672fafb37443e65a2e1ad92918e3c24a6e05d1160a5ccb0f97d"
+        "sha256:2f0f78682bcefbd9b1a72f5179450f60195a1177ba2805b665f2cc37a78cf1a0"
     );
 
     fs::write(temp.path().join("worksheet.md"), "# Changed\n")?;
@@ -166,7 +166,7 @@ fn context_bound_manifest_ids_are_not_hard_coded_to_fixture_ids() -> Result<(), 
     )?;
     replace_manifest_field(
         temp.path(),
-        "\"work_packet_ids\": [\"wp_generate\"]",
+        "\"work_packet_ids\": [\"wp_energy_001_generate_pack\"]",
         "\"work_packet_ids\": [\"wp_context_generate_002\"]",
     )?;
 
@@ -673,7 +673,7 @@ fn context(execution_mode: CheckerExecutionMode) -> ArtifactValidationContext {
         validation_report_id: "vreport_energy_001".to_owned(),
         artifact_id: "art_energy_001".to_owned(),
         request_id: "req_energy_001".to_owned(),
-        generation_work_packet_id: "wp_generate".to_owned(),
+        generation_work_packet_id: "wp_energy_001_generate_pack".to_owned(),
         generation_execution_policy: "sandboxed_self_test_python_checker".to_owned(),
         runner_actor_id: "runner_dummy_generator_001".to_owned(),
         validator_version: "1.0".to_owned(),
@@ -688,7 +688,7 @@ fn write_valid_bundle(root: &Path) -> Result<(), Box<dyn Error>> {
         r#"{
   "artifact_id": "art_energy_001",
   "request_id": "req_energy_001",
-  "work_packet_ids": ["wp_generate"],
+  "work_packet_ids": ["wp_energy_001_generate_pack"],
   "title": "Conservation of energy lesson pack",
   "subject": "physics",
   "topic": "conservation_of_energy",

@@ -70,11 +70,16 @@ fn unsafe_fixture_values_fail_without_echoing_secret() -> Result<(), Box<dyn Err
 fn common_secret_path_and_grade_shapes_fail_safely() -> Result<(), Box<dyn Error>> {
     for (unsafe_value, reason) in [
         ("Bearer abcdef1234567890", "secret_like_value"),
+        ("api_key=redacted", "secret_like_value"),
+        ("access_token: redacted", "secret_like_value"),
+        ("token: abcdef1234567890", "secret_like_value"),
+        ("secret=abcdef1234567890", "secret_like_value"),
         ("ghp_abcdef1234567890abcdef", "secret_like_value"),
         ("AKIA1234567890ABCDEF", "secret_like_value"),
         (r"D:\Users\teacher\state.json", "local_path_value"),
         ("/opt/private/config.json", "local_path_value"),
         ("/var/tmp/private.txt", "local_path_value"),
+        ("teacher@example.test", "student_pii_like_value"),
         ("Grade record: Jane scored 88", "student_pii_like_value"),
     ] {
         let temp = tempfile::tempdir()?;
@@ -101,5 +106,70 @@ fn common_secret_path_and_grade_shapes_fail_safely() -> Result<(), Box<dyn Error
             "stderr must not echo unsafe value"
         );
     }
+    Ok(())
+}
+
+#[test]
+fn invalid_json_reports_path_and_continues_scanning() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let examples = temp.path().join("examples/mvp");
+    fs::create_dir_all(&examples)?;
+    fs::write(examples.join("bad.valid.json"), "{ not json")?;
+    fs::write(
+        examples.join("unsafe.valid.json"),
+        serde_json::json!({"title": "Bearer abcdef1234567890"}).to_string(),
+    )?;
+
+    let output = Command::new(verifier())
+        .arg("--root")
+        .arg(temp.path())
+        .output()?;
+
+    assert!(
+        !output.status.success(),
+        "expected invalid JSON and unsafe fixture to fail"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("bad.valid.json:fixture_invalid_json"),
+        "expected invalid JSON path in stderr, got {stderr}"
+    );
+    assert!(
+        stderr.contains("unsafe.valid.json:secret_like_value"),
+        "expected scanner to continue after invalid JSON, got {stderr}"
+    );
+    assert!(
+        !stderr.contains("abcdef1234567890"),
+        "stderr must not echo unsafe values"
+    );
+    Ok(())
+}
+
+#[test]
+fn benign_at_symbols_and_plain_words_are_not_secret_or_pii() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let examples = temp.path().join("examples/mvp");
+    fs::create_dir_all(&examples)?;
+    fs::write(
+        examples.join("request.valid.json"),
+        serde_json::json!({
+            "title": "Torque at @symbol notation",
+            "notes": "Secret as a vocabulary word, token as grammar, and cookie as classroom analogy.",
+            "compiler": "Compiler lesson vocabulary token: identifier and literal. Secret: a hidden value in a word problem."
+        })
+        .to_string(),
+    )?;
+
+    let output = Command::new(verifier())
+        .arg("--root")
+        .arg(temp.path())
+        .output()?;
+
+    assert!(
+        output.status.success(),
+        "expected benign fixture text to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
     Ok(())
 }

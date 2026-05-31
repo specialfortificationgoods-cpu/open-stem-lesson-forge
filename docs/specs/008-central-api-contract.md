@@ -1109,7 +1109,6 @@ Request body:
 
 ```json
 {
-  "idempotency_key": "idem_...",
   "decision": {
     "repair_attempt_id": "rattempt_energy_001_1",
     "source_artifact_id": "art_energy_001",
@@ -1125,10 +1124,11 @@ Request body:
 Rules:
 
 - Request body is closed.
+- Request requires the global `Idempotency-Key` header. The key is scoped by endpoint, actor, scope, `interruption_report_id`, and server-derived repair attempt lineage.
 - Actor ID and scope are derived from authentication.
 - `interruption_report_id`, `repair_attempt_id`, source artifact, attempt index, and interrupted continuation index must match server state.
 - `next_repair_continuation_index` must equal interrupted continuation index plus one when outcome is `continue_on_another_runner`.
-- Idempotent replay with identical body returns the original decision; changed replay under the same key is rejected.
+- Idempotent replay with the same header key and identical body returns the original decision; changed replay under the same header key is rejected with `409 idempotency_conflict`.
 - `continue_on_another_runner` creates exactly one new repair work packet with the interrupted runner actor excluded.
 - Stop/quarantine/triage outcomes create no repair work packet.
 - No outcome creates an artifact, validation report, review record, or public label.
@@ -1506,7 +1506,7 @@ Endpoint request allowlists:
 | Verification submit | lease credentials plus `PlanVerification` schema |
 | Promotion | safe reason enum only |
 | Work output submit | lease credentials plus closed output metadata schema, digest metadata, required spec `013` self-test report evidence for `sandboxed_self_test_python_checker` generation work, and spec `014` code critique/repair/interruption reports for their task types |
-| Repair interruption decision | idempotency key plus closed spec `014` continuation decision body; actor and scope derive from auth |
+| Repair interruption decision | `Idempotency-Key` header plus closed spec `014` continuation decision body; actor and scope derive from auth |
 | Validation work claim/heartbeat/release | system-validator actor context, validation work packet ID, lease ID/token for heartbeat/release |
 | Validation report | validation lease credentials from dedicated validation-work claim, validator run ID, plus validation report schema |
 | Review submit | lease credentials plus review schema |

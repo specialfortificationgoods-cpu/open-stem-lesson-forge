@@ -91,8 +91,7 @@
       "type": "array",
       "minItems": 3,
       "maxItems": 3,
-      "items": {
-        "anyOf": [
+      "prefixItems": [
           {
             "type": "object",
             "additionalProperties": false,
@@ -146,6 +145,8 @@
               },
               "outputs": {
                 "type": "array",
+                "minItems": 5,
+                "maxItems": 5,
                 "uniqueItems": true,
                 "items": {
                   "enum": [
@@ -153,9 +154,7 @@
                     "answer_key.md",
                     "checker.py",
                     "teacher_notes.md",
-                    "manifest.json",
-                    "validation_report.json",
-                    "review.json"
+                    "manifest.json"
                   ]
                 }
               },
@@ -237,17 +236,11 @@
               },
               "outputs": {
                 "type": "array",
+                "minItems": 1,
+                "maxItems": 1,
                 "uniqueItems": true,
                 "items": {
-                  "enum": [
-                    "worksheet.md",
-                    "answer_key.md",
-                    "checker.py",
-                    "teacher_notes.md",
-                    "manifest.json",
-                    "validation_report.json",
-                    "review.json"
-                  ]
+                  "const": "validation_report.json"
                 }
               },
               "validation_required": {
@@ -327,17 +320,11 @@
               },
               "outputs": {
                 "type": "array",
+                "minItems": 1,
+                "maxItems": 1,
                 "uniqueItems": true,
                 "items": {
-                  "enum": [
-                    "worksheet.md",
-                    "answer_key.md",
-                    "checker.py",
-                    "teacher_notes.md",
-                    "manifest.json",
-                    "validation_report.json",
-                    "review.json"
-                  ]
+                  "const": "review.json"
                 }
               },
               "validation_required": {
@@ -363,8 +350,7 @@
               }
             }
           }
-        ]
-      }
+      ]
     }
   }
 }

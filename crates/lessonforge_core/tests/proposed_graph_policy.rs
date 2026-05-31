@@ -288,7 +288,7 @@ fn verified_low_risk_graph_promotes_transactionally_and_replay_is_idempotent()
     );
     assert_eq!(
         promotion.work_packets[2].depends_on_work_packet_ids,
-        vec![WorkPacketId::try_from("wp_validate")?]
+        vec![WorkPacketId::try_from("wp_energy_001_validate_pack")?]
     );
 
     let replay = promote_verified_proposal(
@@ -364,9 +364,9 @@ fn verified_low_risk_graph_promotes_transactionally_and_replay_is_idempotent()
         PromotionIds {
             promotion_decision_id: PromotionDecisionId::try_from("promo_other")?,
             work_packet_ids: vec![
-                WorkPacketId::try_from("wp_generate_2")?,
-                WorkPacketId::try_from("wp_validate_2")?,
-                WorkPacketId::try_from("wp_review_2")?,
+                WorkPacketId::try_from("wp_energy_001_generate_pack_2")?,
+                WorkPacketId::try_from("wp_energy_001_validate_pack_2")?,
+                WorkPacketId::try_from("wp_energy_001_human_review_2")?,
             ],
         },
         "idem_promote_other",
@@ -476,9 +476,9 @@ fn promotion_rejects_duplicate_work_packet_ids_before_ledger_mutation() -> Resul
     let duplicate_ids = PromotionIds {
         promotion_decision_id: PromotionDecisionId::try_from("promo_energy_001")?,
         work_packet_ids: vec![
-            WorkPacketId::try_from("wp_generate")?,
-            WorkPacketId::try_from("wp_generate")?,
-            WorkPacketId::try_from("wp_review")?,
+            WorkPacketId::try_from("wp_energy_001_generate_pack")?,
+            WorkPacketId::try_from("wp_energy_001_generate_pack")?,
+            WorkPacketId::try_from("wp_energy_001_human_review")?,
         ],
     };
 
@@ -524,9 +524,9 @@ fn promotion_ids() -> Result<PromotionIds, Box<dyn Error>> {
     Ok(PromotionIds {
         promotion_decision_id: PromotionDecisionId::try_from("promo_energy_001")?,
         work_packet_ids: vec![
-            WorkPacketId::try_from("wp_generate")?,
-            WorkPacketId::try_from("wp_validate")?,
-            WorkPacketId::try_from("wp_review")?,
+            WorkPacketId::try_from("wp_energy_001_generate_pack")?,
+            WorkPacketId::try_from("wp_energy_001_validate_pack")?,
+            WorkPacketId::try_from("wp_energy_001_human_review")?,
         ],
     })
 }

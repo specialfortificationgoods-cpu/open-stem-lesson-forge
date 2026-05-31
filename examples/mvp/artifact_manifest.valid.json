@@ -1,7 +1,7 @@
 {
   "artifact_id": "art_energy_001",
   "request_id": "req_energy_001",
-  "work_packet_ids": ["wp_generate"],
+  "work_packet_ids": ["wp_energy_001_generate_pack"],
   "title": "Conservation of energy lesson pack",
   "subject": "physics",
   "topic": "conservation_of_energy",

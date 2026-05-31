@@ -82,7 +82,16 @@ fn scan_path(path: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
         return Ok(());
     }
     let content = fs::read_to_string(path).map_err(|error| error.to_string())?;
-    let json = serde_json::from_str::<Value>(&content).map_err(|_| "fixture_invalid_json")?;
+    let json = match serde_json::from_str::<Value>(&content) {
+        Ok(json) => json,
+        Err(_) => {
+            findings.push(Finding {
+                path: path.to_path_buf(),
+                reason: "fixture_invalid_json",
+            });
+            return Ok(());
+        }
+    };
     scan_json_strings(path, &json, findings);
     Ok(())
 }
@@ -97,7 +106,7 @@ fn scan_json_strings(path: &Path, value: &Value, findings: &mut Vec<Finding>) {
         }
         Value::Object(object) => {
             for (key, child) in object {
-                scan_text(path, key, findings);
+                scan_key(path, key, findings);
                 scan_json_strings(path, child, findings);
             }
         }
@@ -114,21 +123,21 @@ fn scan_text(path: &Path, text: &str, findings: &mut Vec<Finding>) {
     }
 }
 
+fn scan_key(path: &Path, key: &str, findings: &mut Vec<Finding>) {
+    let lower = key.to_ascii_lowercase();
+    if contains_secret_like_key(&lower) {
+        findings.push(Finding {
+            path: path.to_path_buf(),
+            reason: "secret_like_value",
+        });
+    }
+    scan_text(path, key, findings);
+}
+
 fn unsafe_reasons(text: &str) -> Vec<&'static str> {
     let lower = text.to_ascii_lowercase();
     let mut reasons = Vec::new();
-    if lower.contains("sk-")
-        || lower.contains("bearer ")
-        || lower.contains("ghp_")
-        || lower.contains("akia")
-        || lower.contains("api_key")
-        || lower.contains("password")
-        || lower.contains("credential=")
-        || lower.contains("cookie")
-        || lower.contains("oauth")
-        || lower.contains("token:")
-        || lower.contains("secret")
-    {
+    if contains_secret_like_value(&lower) {
         reasons.push("secret_like_value");
     }
     if lower.contains("/users/")
@@ -149,7 +158,7 @@ fn unsafe_reasons(text: &str) -> Vec<&'static str> {
     if lower.contains("http://") || lower.contains("https://") || lower.contains("file://") {
         reasons.push("unsafe_url_value");
     }
-    if lower.contains('@')
+    if contains_email_like_value(text)
         || lower.contains("student roster")
         || lower.contains("student alice")
         || lower.contains("grade record")
@@ -168,6 +177,203 @@ fn unsafe_reasons(text: &str) -> Vec<&'static str> {
     reasons.sort_unstable();
     reasons.dedup();
     reasons
+}
+
+fn contains_secret_like_key(lower: &str) -> bool {
+    let tokens = lower
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+    if tokens.is_empty() {
+        return false;
+    }
+    tokens.iter().any(|token| {
+        matches!(
+            *token,
+            "apikey" | "password" | "credential" | "credentials" | "cookie" | "cookies" | "oauth"
+        )
+    }) || contains_token_sequence(&tokens, &["api", "key"])
+        || contains_token_sequence(&tokens, &["access", "token"])
+        || contains_token_sequence(&tokens, &["refresh", "token"])
+        || contains_token_sequence(&tokens, &["auth", "token"])
+        || contains_token_sequence(&tokens, &["bearer", "token"])
+        || contains_token_sequence(&tokens, &["client", "secret"])
+        || contains_token_sequence(&tokens, &["api", "secret"])
+        || key_has_sensitive_suffix(&tokens)
+}
+
+fn contains_token_sequence(tokens: &[&str], sequence: &[&str]) -> bool {
+    tokens
+        .windows(sequence.len())
+        .any(|window| window == sequence)
+}
+
+fn key_has_sensitive_suffix(tokens: &[&str]) -> bool {
+    tokens
+        .last()
+        .is_some_and(|last| matches!(*last, "token" | "tokens" | "secret" | "secrets"))
+}
+
+fn contains_secret_like_value(lower: &str) -> bool {
+    if contains_known_secret_marker(lower) {
+        return true;
+    }
+    [
+        "api_key",
+        "apikey",
+        "access_token",
+        "refresh_token",
+        "auth_token",
+        "bearer_token",
+        "client_secret",
+        "api_secret",
+        "password",
+        "credential",
+        "credentials",
+        "cookie",
+        "cookies",
+        "oauth",
+    ]
+    .iter()
+    .any(|alias| contains_assignment_like_alias(lower, alias))
+        || ["token", "tokens", "secret", "secrets"]
+            .iter()
+            .any(|alias| contains_assignment_like_secret_value(lower, alias))
+}
+
+fn contains_assignment_like_alias(lower: &str, alias: &str) -> bool {
+    assignment_like_values(lower, alias).next().is_some()
+}
+
+fn contains_assignment_like_secret_value(lower: &str, alias: &str) -> bool {
+    assignment_like_values(lower, alias).any(assigned_value_looks_secret)
+}
+
+fn assignment_like_values<'a>(lower: &'a str, alias: &'a str) -> impl Iterator<Item = &'a str> {
+    let mut search_start = 0;
+    std::iter::from_fn(move || {
+        while let Some(relative_index) = lower[search_start..].find(alias) {
+            let index = search_start + relative_index;
+            let before_ok = lower[..index]
+                .chars()
+                .next_back()
+                .is_none_or(|character| !character.is_ascii_alphanumeric() && character != '_');
+            let after_alias = index + alias.len();
+            let suffix = &lower[after_alias..];
+            let after_ok = suffix
+                .chars()
+                .next()
+                .is_none_or(|character| !character.is_ascii_alphanumeric() && character != '_');
+            search_start = after_alias;
+            if !before_ok || !after_ok {
+                continue;
+            }
+            let trimmed_suffix =
+                suffix.trim_start_matches(|character: char| character.is_ascii_whitespace());
+            if let Some(separator) = trimmed_suffix
+                .chars()
+                .next()
+                .filter(|character| matches!(character, ':' | '='))
+            {
+                return Some(&trimmed_suffix[separator.len_utf8()..]);
+            }
+        }
+        None
+    })
+}
+
+fn assigned_value_looks_secret(value: &str) -> bool {
+    let trimmed = value.trim_start();
+    if contains_known_secret_marker(trimmed) {
+        return true;
+    }
+    let first_token = trimmed
+        .split(|character: char| character.is_ascii_whitespace() || matches!(character, ',' | ';'))
+        .next()
+        .unwrap_or_default()
+        .trim_matches(|character: char| matches!(character, '"' | '\'' | '[' | ']' | '{' | '}'));
+    first_token.len() >= 12
+        && first_token.chars().all(|character| {
+            character.is_ascii_alphanumeric()
+                || matches!(character, '_' | '-' | '.' | '/' | '+' | '=')
+        })
+}
+
+fn contains_known_secret_marker(lower: &str) -> bool {
+    contains_delimited_prefix(lower, "sk-")
+        || contains_sk_credential_marker(lower)
+        || lower.contains("bearer ")
+        || lower.contains("authorization: bearer")
+        || contains_delimited_prefix(lower, "ghp_")
+        || contains_delimited_prefix(lower, "akia")
+}
+
+fn contains_sk_credential_marker(lower: &str) -> bool {
+    ["sk_live", "sk_test", "sk_proj"]
+        .iter()
+        .any(|prefix| contains_delimited_prefix(lower, prefix))
+}
+
+fn contains_delimited_prefix(lower: &str, prefix: &str) -> bool {
+    let mut search_start = 0;
+    while let Some(relative_index) = lower[search_start..].find(prefix) {
+        let index = search_start + relative_index;
+        let before_ok = lower[..index]
+            .chars()
+            .next_back()
+            .is_none_or(|character| !character.is_ascii_alphanumeric() && character != '_');
+        if before_ok {
+            return true;
+        }
+        search_start = index + prefix.len();
+    }
+    false
+}
+
+fn contains_email_like_value(value: &str) -> bool {
+    value
+        .match_indices('@')
+        .any(|(at_index, _)| email_like_at(value, at_index))
+}
+
+fn email_like_at(value: &str, at_index: usize) -> bool {
+    let local = email_local_part_before(value, at_index);
+    let domain = email_domain_part_after(value, at_index + 1);
+    if local.is_empty() || domain.is_empty() || !domain.contains('.') {
+        return false;
+    }
+    domain.rsplit('.').next().is_some_and(|tld| {
+        tld.len() >= 2 && tld.chars().all(|character| character.is_ascii_alphabetic())
+    })
+}
+
+fn email_local_part_before(value: &str, at_index: usize) -> &str {
+    let local_start = value[..at_index]
+        .char_indices()
+        .rev()
+        .find_map(|(index, character)| {
+            (!is_email_local_character(character)).then_some(index + character.len_utf8())
+        })
+        .unwrap_or(0);
+    &value[local_start..at_index]
+}
+
+fn email_domain_part_after(value: &str, domain_start: usize) -> &str {
+    let domain_end = value[domain_start..]
+        .char_indices()
+        .find_map(|(index, character)| {
+            (!is_email_domain_character(character)).then_some(domain_start + index)
+        })
+        .unwrap_or(value.len());
+    &value[domain_start..domain_end]
+}
+
+fn is_email_local_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '%' | '+' | '-')
+}
+
+fn is_email_domain_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '.' | '-')
 }
 
 fn has_phone_like_digit_run(value: &str, lower: &str) -> bool {
@@ -737,17 +943,40 @@ mod tests {
     fn json_object_keys_are_scanned_for_leaks() {
         let value = serde_json::json!({
             "safe": "ordinary fixture text",
-            "api_key": "redacted value"
+            "api_key": "redacted value",
+            "openai_api_key": "redacted value",
+            "provider_access_token": "redacted value",
+            "anthropic_client_secret": "redacted value",
+            "session_token": "redacted value"
         });
         let mut findings = Vec::new();
 
         scan_json_strings(Path::new("fixture.json"), &value, &mut findings);
 
-        assert!(
-            findings
-                .iter()
-                .any(|finding| finding.reason == "secret_like_value"),
+        let secret_like_count = findings
+            .iter()
+            .filter(|finding| finding.reason == "secret_like_value")
+            .count();
+        assert_eq!(
+            secret_like_count, 5,
             "object keys should be scanned with the same leak rules as string values"
         );
+    }
+
+    #[test]
+    fn benign_metadata_keys_do_not_fail_as_secret_like() {
+        for key in ["risk_level", "source_request_summary", "sk_units"] {
+            let value = serde_json::json!({ key: "ordinary fixture text" });
+            let mut findings = Vec::new();
+
+            scan_json_strings(Path::new("fixture.json"), &value, &mut findings);
+
+            assert!(
+                !findings
+                    .iter()
+                    .any(|finding| finding.reason == "secret_like_value"),
+                "{key} should not fail as a secret-like key"
+            );
+        }
     }
 }

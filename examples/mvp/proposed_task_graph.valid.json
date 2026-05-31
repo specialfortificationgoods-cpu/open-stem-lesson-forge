@@ -41,6 +41,7 @@
       "age_range": "14-16",
       "language": "en",
       "risk_level": "low",
+      "execution_policy": "code_generation_only",
       "required_capabilities": ["stem_pedagogy", "structured_markdown", "basic_python"],
       "outputs": ["worksheet.md", "answer_key.md", "checker.py", "teacher_notes.md", "manifest.json"],
       "validation_required": [

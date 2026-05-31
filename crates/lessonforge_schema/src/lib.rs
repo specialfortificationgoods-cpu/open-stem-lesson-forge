@@ -470,7 +470,7 @@ pub fn validate_artifact_manifest(value: &Value) -> Result<(), SchemaError> {
     require_exact_set(
         SchemaName::ArtifactManifest,
         &manifest.work_packet_ids,
-        &["wp_generate"],
+        &["wp_energy_001_generate_pack"],
         "invalid_work_packet_ids",
         "/work_packet_ids",
     )?;
@@ -676,6 +676,7 @@ fn reject_unsupported_schema_keywords(
                 "pattern",
                 "properties",
                 "items",
+                "prefixItems",
             ]
             .iter()
             .any(|keyword| object.contains_key(*keyword));
@@ -772,7 +773,13 @@ fn reject_unsupported_schema_keywords(
                 schema,
                 object,
                 "array",
-                &["items", "minItems", "maxItems", "uniqueItems"],
+                &[
+                    "items",
+                    "prefixItems",
+                    "minItems",
+                    "maxItems",
+                    "uniqueItems",
+                ],
             )?;
             require_type_for_keyword_family(
                 schema,
@@ -821,6 +828,25 @@ fn reject_unsupported_schema_keywords(
                     ));
                 }
                 reject_unsupported_schema_keywords(schema, items)?;
+            }
+            if let Some(prefix_items_value) = object.get("prefixItems") {
+                let Some(prefix_items) = prefix_items_value.as_array() else {
+                    return Err(SchemaError::new(
+                        schema,
+                        "schema_compile_failed",
+                        "/schemas",
+                    ));
+                };
+                if prefix_items.is_empty() {
+                    return Err(SchemaError::new(
+                        schema,
+                        "schema_compile_failed",
+                        "/schemas",
+                    ));
+                }
+                for child in prefix_items {
+                    reject_unsupported_schema_keywords(schema, child)?;
+                }
             }
             if let Some(any_of) = object.get("anyOf").and_then(Value::as_array) {
                 for child in any_of {
@@ -886,6 +912,7 @@ fn schema_keyword_is_supported(keyword: &str) -> bool {
             | "pattern"
             | "properties"
             | "items"
+            | "prefixItems"
             | "additionalProperties"
             | "required"
             | "minItems"
@@ -1060,7 +1087,11 @@ fn validate_schema_array(
             }
         }
     }
-    if let Some(item_schema) = schema.get("items") {
+    if let Some(prefix_items) = schema.get("prefixItems").and_then(Value::as_array) {
+        for (item, item_schema) in items.iter().zip(prefix_items) {
+            validate_schema_value(schema_name, item_schema, item, field_path)?;
+        }
+    } else if let Some(item_schema) = schema.get("items") {
         for item in items {
             validate_schema_value(schema_name, item_schema, item, field_path)?;
         }
@@ -1297,6 +1328,13 @@ fn validate_proposed_tasks(tasks: &[ProposedTask]) -> Result<(), SchemaError> {
         "invalid_validation_task",
         "/proposed_tasks",
     )?;
+    require_exact_set(
+        SchemaName::ProposedTaskGraph,
+        &validation.outputs,
+        &["validation_report.json"],
+        "invalid_validation_outputs",
+        "/proposed_tasks/outputs",
+    )?;
     require_eq(
         SchemaName::ProposedTaskGraph,
         review.phase == "human_review" && review.depends_on == [validation.local_id.as_str()],
@@ -1316,6 +1354,13 @@ fn validate_proposed_tasks(tasks: &[ProposedTask]) -> Result<(), SchemaError> {
         &["peer_reviewed"],
         "missing_human_review_gate",
         "/proposed_tasks/human_review_required_for",
+    )?;
+    require_exact_set(
+        SchemaName::ProposedTaskGraph,
+        &review.outputs,
+        &["review.json"],
+        "invalid_review_outputs",
+        "/proposed_tasks/outputs",
     )?;
     Ok(())
 }

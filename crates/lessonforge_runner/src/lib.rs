@@ -425,7 +425,7 @@ impl DummyGenerationContext {
             artifact_id: "art_energy_001".to_owned(),
             artifact_intake_ref: "aintake_energy_001".to_owned(),
             request_id: "req_energy_001".to_owned(),
-            work_packet_id: "wp_generate".to_owned(),
+            work_packet_id: "wp_energy_001_generate_pack".to_owned(),
             lease_id: lease_id.clone(),
             runner_actor_id: "runner_dummy_generator_001".to_owned(),
             execution_policy: "sandboxed_self_test_python_checker".to_owned(),
@@ -599,6 +599,7 @@ pub fn dummy_proposed_task_graph(
                 "age_range": "14-16",
                 "language": "en",
                 "risk_level": "low",
+                "execution_policy": "code_generation_only",
                 "required_capabilities": ["stem_pedagogy", "structured_markdown", "basic_python"],
                 "outputs": ["worksheet.md", "answer_key.md", "checker.py", "teacher_notes.md", "manifest.json"],
                 "validation_required": [
