@@ -1,0 +1,38 @@
+{
+  "title": "MVP Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "title",
+    "subject",
+    "topic",
+    "age_range",
+    "language",
+    "lesson_duration_minutes",
+    "desired_artifacts",
+    "constraints",
+    "license_preference",
+    "visibility",
+    "forbidden_content_acknowledged"
+  ],
+  "properties": {
+    "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "subject": { "const": "physics" },
+    "topic": { "const": "conservation_of_energy" },
+    "age_range": { "const": "14-16" },
+    "language": { "const": "en" },
+    "lesson_duration_minutes": { "const": 45 },
+    "desired_artifacts": {
+      "type": "array",
+      "items": { "enum": ["worksheet", "answer_key", "python_checker", "teacher_notes"] }
+    },
+    "constraints": {
+      "type": "array",
+      "maxItems": 12,
+      "items": { "type": "string", "maxLength": 240 }
+    },
+    "license_preference": { "const": "CC-BY-4.0" },
+    "visibility": { "const": "public" },
+    "forbidden_content_acknowledged": { "const": true }
+  }
+}

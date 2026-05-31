@@ -1,0 +1,19 @@
+{
+  "verification_id": "pverify_energy_001_a",
+  "proposal_id": "plan_energy_001_a",
+  "verification_task_id": "pvtask_energy_001_a",
+  "verifier_runner_id": "runner_dummy_verifier_001",
+  "verification_type": "plan_schema_policy_cross_check",
+  "status": "submitted",
+  "outcome": "no_blocking_findings",
+  "findings": [],
+  "checked_items": [
+    "required_artifacts_present",
+    "human_review_gate_present",
+    "no_student_grading",
+    "no_credential_handling",
+    "no_arbitrary_prompt",
+    "validation_plan_present"
+  ],
+  "authority": "advisory_only"
+}

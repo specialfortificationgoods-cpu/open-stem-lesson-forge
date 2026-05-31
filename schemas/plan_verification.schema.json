@@ -1,0 +1,44 @@
+{
+  "title": "Plan Verification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verification_id",
+    "proposal_id",
+    "verification_task_id",
+    "verifier_runner_id",
+    "verification_type",
+    "status",
+    "outcome",
+    "findings",
+    "checked_items",
+    "authority"
+  ],
+  "properties": {
+    "verification_id": { "type": "string", "pattern": "^pverify_[a-z0-9_-]+$" },
+    "proposal_id": { "const": "plan_energy_001_a" },
+    "verification_task_id": { "const": "pvtask_energy_001_a" },
+    "verifier_runner_id": { "const": "runner_dummy_verifier_001" },
+    "verification_type": { "const": "plan_schema_policy_cross_check" },
+    "status": { "const": "submitted" },
+    "outcome": { "const": "no_blocking_findings" },
+    "findings": { "type": "array", "maxItems": 0 },
+    "checked_items": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "required_artifacts_present",
+          "human_review_gate_present",
+          "no_student_grading",
+          "no_credential_handling",
+          "no_arbitrary_prompt",
+          "validation_plan_present"
+        ]
+      }
+    },
+    "authority": { "const": "advisory_only" }
+  }
+}

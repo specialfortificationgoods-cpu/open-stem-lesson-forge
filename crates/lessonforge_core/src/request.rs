@@ -1,0 +1,588 @@
+use crate::ids::{ActorId, LeaseId, PlanningTaskId, RequestId, RequestModerationTaskId};
+use crate::moderation::{ModerationDecision, ModerationReportState, ModerationReportSubmission};
+use crate::planning::{PlanningTaskRecord, mechanical_planning_task};
+use crate::state::{
+    ActorCapability, RequestModerationTaskState, RequestState, RequestTransition, TrustLevel,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::BTreeSet;
+
+pub type RequestIntakePayload = Value;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoRepairPreference {
+    NoAutomatedRepair,
+    RequestBoundedCodeRepair,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StoredRequestVisibility {
+    Public,
+    Private,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequestPublicStatus {
+    Requested,
+}
+
+impl RequestPublicStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Requested => "requested",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntakeRejectionReason {
+    MissingRequiredField,
+    UnknownField,
+    InvalidField,
+    UnsafeText,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum RequestWorkflowError {
+    #[error("request intake rejected: {reason:?} at {field_path}")]
+    Rejected {
+        reason: IntakeRejectionReason,
+        field_path: String,
+    },
+    #[error("request moderation rejected: {reason}")]
+    ModerationRejected { reason: &'static str },
+    #[error(transparent)]
+    Transition(#[from] crate::error::TransitionError),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IntakeContext {
+    pub request_id: RequestId,
+    pub moderation_task_id: RequestModerationTaskId,
+    pub scope_id: String,
+    pub created_by_actor_id: ActorId,
+    pub now: String,
+    pub default_auto_repair_preference: AutoRepairPreference,
+    pub default_visibility: StoredRequestVisibility,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredRequest {
+    pub request_id: RequestId,
+    pub scope_id: String,
+    pub created_by_actor_id: ActorId,
+    pub created_at: String,
+    pub state: RequestState,
+    pub title: String,
+    pub subject: String,
+    pub topic: String,
+    pub age_range: String,
+    pub language: String,
+    pub lesson_duration_minutes: u16,
+    pub desired_artifacts: Vec<String>,
+    pub constraints: Vec<String>,
+    pub license_preference: String,
+    pub visibility: StoredRequestVisibility,
+    pub auto_repair_preference: AutoRepairPreference,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestModerationTaskRecord {
+    pub task_id: RequestModerationTaskId,
+    pub request_id: RequestId,
+    pub scope_id: String,
+    pub state: RequestModerationTaskState,
+    pub task_type: &'static str,
+    pub input_refs: Vec<String>,
+    pub required_output_schema: &'static str,
+    pub allowed_outputs: Vec<&'static str>,
+    pub forbidden_outputs: Vec<&'static str>,
+    pub required_capabilities: Vec<ActorCapability>,
+    pub minimum_runner_trust_level: TrustLevel,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestIntakeOutcome {
+    pub request: StoredRequest,
+    pub public_status: RequestPublicStatus,
+    pub moderation_task: RequestModerationTaskRecord,
+    pub planning_task: Option<PlanningTaskRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestModerationContext {
+    pub request_id: RequestId,
+    pub moderation_task_id: RequestModerationTaskId,
+    pub planning_task_id: PlanningTaskId,
+    pub moderator_actor_id: ActorId,
+    pub lease_id: LeaseId,
+    pub claim_token_hash: String,
+    pub scope_id: String,
+    pub lease_active: bool,
+    pub actor_scope_matches: bool,
+    pub actor_can_moderate: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModerationApplicationOutcome {
+    pub request_state: RequestState,
+    pub report_state: ModerationReportState,
+    pub planning_task: Option<PlanningTaskRecord>,
+}
+
+pub fn accept_request_intake(
+    payload: RequestIntakePayload,
+    context: IntakeContext,
+) -> Result<RequestIntakeOutcome, RequestWorkflowError> {
+    let object = payload.as_object().ok_or(RequestWorkflowError::Rejected {
+        reason: IntakeRejectionReason::InvalidField,
+        field_path: "/".to_owned(),
+    })?;
+    reject_unknown_fields(object.keys().map(String::as_str))?;
+
+    let title = required_limited_string(object, "title", 1, 120)?;
+    let subject = required_enum(object, "subject", &["physics"])?;
+    let topic = required_topic(object)?;
+    let age_range = required_enum(object, "age_range", &["14-16"])?;
+    let language = required_enum(object, "language", &["en"])?;
+    let lesson_duration_minutes = required_duration_minutes(object)?;
+    let desired_artifacts = required_desired_artifacts(object)?;
+    let constraints = optional_constraints(object)?;
+    let license_preference = required_enum(object, "license_preference", &["CC-BY-4.0"])?;
+    let visibility = optional_visibility(object, context.default_visibility)?;
+    let auto_repair_preference =
+        optional_auto_repair_preference(object, context.default_auto_repair_preference)?;
+    require_true(object, "forbidden_content_acknowledged")?;
+
+    for value in [
+        &title,
+        &subject,
+        &topic,
+        &age_range,
+        &language,
+        &license_preference,
+    ] {
+        reject_unsafe_text(value)?;
+    }
+    for value in desired_artifacts.iter().chain(constraints.iter()) {
+        reject_unsafe_text(value)?;
+    }
+
+    let request_state =
+        RequestState::Requested.transition(RequestTransition::DeterministicIntakePassed)?;
+    let request = StoredRequest {
+        request_id: context.request_id.clone(),
+        scope_id: context.scope_id.clone(),
+        created_by_actor_id: context.created_by_actor_id,
+        created_at: context.now,
+        state: request_state,
+        title,
+        subject,
+        topic,
+        age_range,
+        language,
+        lesson_duration_minutes,
+        desired_artifacts,
+        constraints,
+        license_preference,
+        visibility,
+        auto_repair_preference,
+    };
+    let moderation_task = RequestModerationTaskRecord {
+        task_id: context.moderation_task_id,
+        request_id: context.request_id,
+        scope_id: context.scope_id,
+        state: RequestModerationTaskState::Open,
+        task_type: "moderate_request",
+        input_refs: vec![request.request_id.to_string()],
+        required_output_schema: "request_moderation_report.schema.json",
+        allowed_outputs: vec!["request_moderation_report"],
+        forbidden_outputs: vec![
+            "arbitrary_prompt",
+            "provider_raw_response",
+            "provider_credentials",
+            "student_grading_task",
+        ],
+        required_capabilities: vec![
+            ActorCapability::ContentModeration,
+            ActorCapability::AgeAppropriatenessClassification,
+            ActorCapability::StructuredJsonOutput,
+        ],
+        minimum_runner_trust_level: TrustLevel::ModerationCandidate,
+    };
+
+    Ok(RequestIntakeOutcome {
+        request,
+        public_status: RequestPublicStatus::Requested,
+        moderation_task,
+        planning_task: None,
+    })
+}
+
+pub fn apply_moderation_report(
+    request: &StoredRequest,
+    context: RequestModerationContext,
+    report: ModerationReportSubmission,
+) -> Result<ModerationApplicationOutcome, RequestWorkflowError> {
+    if !context.lease_active || !context.actor_scope_matches || !context.actor_can_moderate {
+        return Err(RequestWorkflowError::ModerationRejected {
+            reason: "moderation_context_not_authorized",
+        });
+    }
+    if context.request_id != request.request_id
+        || context.scope_id != request.scope_id
+        || report.request_id != request.request_id
+        || report.request_moderation_task_id != context.moderation_task_id
+        || report.lease_id != context.lease_id
+        || crate::state::Lease::claim_token_hash(&report.claim_token) != context.claim_token_hash
+    {
+        return Err(RequestWorkflowError::ModerationRejected {
+            reason: "moderation_lineage_mismatch",
+        });
+    }
+    if request.state != RequestState::ModerationPending || !report.is_consistent() {
+        return Err(RequestWorkflowError::ModerationRejected {
+            reason: "moderation_report_inconsistent",
+        });
+    }
+
+    match report.decision {
+        ModerationDecision::AllowMvpPlanning => {
+            let moderation_passed = request
+                .state
+                .transition(RequestTransition::ModerationAllowsPlanning)?;
+            let planning_open =
+                moderation_passed.transition(RequestTransition::CreatePlanningTask)?;
+            Ok(ModerationApplicationOutcome {
+                request_state: planning_open,
+                report_state: ModerationReportState::Accepted,
+                planning_task: Some(mechanical_planning_task(
+                    context.planning_task_id,
+                    request.request_id.clone(),
+                    request.scope_id.clone(),
+                )),
+            })
+        }
+        ModerationDecision::RejectRequest => Ok(ModerationApplicationOutcome {
+            request_state: request
+                .state
+                .transition(RequestTransition::ModerationRejects)?,
+            report_state: ModerationReportState::Accepted,
+            planning_task: None,
+        }),
+        ModerationDecision::QuarantineRequest => Ok(ModerationApplicationOutcome {
+            request_state: request
+                .state
+                .transition(RequestTransition::ModerationQuarantines)?,
+            report_state: ModerationReportState::Accepted,
+            planning_task: None,
+        }),
+    }
+}
+
+fn reject_unknown_fields<'a>(
+    mut keys: impl Iterator<Item = &'a str>,
+) -> Result<(), RequestWorkflowError> {
+    let allowed = [
+        "title",
+        "subject",
+        "topic",
+        "age_range",
+        "language",
+        "lesson_duration_minutes",
+        "desired_artifacts",
+        "constraints",
+        "license_preference",
+        "visibility",
+        "forbidden_content_acknowledged",
+        "auto_repair_preference",
+    ]
+    .into_iter()
+    .collect::<BTreeSet<_>>();
+    if let Some(key) = keys.find(|key| !allowed.contains(key)) {
+        return Err(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::UnknownField,
+            field_path: format!("/{key}"),
+        });
+    }
+    Ok(())
+}
+
+fn required_string(
+    object: &serde_json::Map<String, Value>,
+    field: &'static str,
+) -> Result<String, RequestWorkflowError> {
+    object
+        .get(field)
+        .ok_or(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::MissingRequiredField,
+            field_path: format!("/{field}"),
+        })?
+        .as_str()
+        .filter(|value| !value.trim().is_empty())
+        .map(ToOwned::to_owned)
+        .ok_or(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::InvalidField,
+            field_path: format!("/{field}"),
+        })
+}
+
+fn required_limited_string(
+    object: &serde_json::Map<String, Value>,
+    field: &'static str,
+    min: usize,
+    max: usize,
+) -> Result<String, RequestWorkflowError> {
+    let value = required_string(object, field)?;
+    let scalar_count = value.trim().chars().count();
+    if scalar_count < min || scalar_count > max {
+        return Err(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::InvalidField,
+            field_path: format!("/{field}"),
+        });
+    }
+    Ok(value.trim().to_owned())
+}
+
+fn required_enum(
+    object: &serde_json::Map<String, Value>,
+    field: &'static str,
+    allowed: &[&str],
+) -> Result<String, RequestWorkflowError> {
+    let value = required_limited_string(object, field, 1, 80)?;
+    if allowed.contains(&value.as_str()) {
+        Ok(value)
+    } else {
+        Err(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::InvalidField,
+            field_path: format!("/{field}"),
+        })
+    }
+}
+
+fn required_topic(object: &serde_json::Map<String, Value>) -> Result<String, RequestWorkflowError> {
+    let value = required_limited_string(object, "topic", 1, 80)?;
+    if value
+        .chars()
+        .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_' || ch == '-')
+    {
+        Ok(value)
+    } else {
+        Err(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::InvalidField,
+            field_path: "/topic".to_owned(),
+        })
+    }
+}
+
+fn required_u16(
+    object: &serde_json::Map<String, Value>,
+    field: &'static str,
+) -> Result<u16, RequestWorkflowError> {
+    let value = object
+        .get(field)
+        .ok_or(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::MissingRequiredField,
+            field_path: format!("/{field}"),
+        })?
+        .as_u64()
+        .ok_or(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::InvalidField,
+            field_path: format!("/{field}"),
+        })?;
+    u16::try_from(value).map_err(|_| RequestWorkflowError::Rejected {
+        reason: IntakeRejectionReason::InvalidField,
+        field_path: format!("/{field}"),
+    })
+}
+
+fn required_duration_minutes(
+    object: &serde_json::Map<String, Value>,
+) -> Result<u16, RequestWorkflowError> {
+    let minutes = required_u16(object, "lesson_duration_minutes")?;
+    if (15..=120).contains(&minutes) {
+        Ok(minutes)
+    } else {
+        Err(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::InvalidField,
+            field_path: "/lesson_duration_minutes".to_owned(),
+        })
+    }
+}
+
+fn required_desired_artifacts(
+    object: &serde_json::Map<String, Value>,
+) -> Result<Vec<String>, RequestWorkflowError> {
+    let values = required_string_array(object, "desired_artifacts")?;
+    if values.len() > 8 {
+        return Err(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::InvalidField,
+            field_path: "/desired_artifacts".to_owned(),
+        });
+    }
+    let mut seen = BTreeSet::new();
+    for (index, value) in values.iter().enumerate() {
+        if !matches!(
+            value.as_str(),
+            "worksheet" | "answer_key" | "python_checker" | "teacher_notes"
+        ) || !seen.insert(value)
+        {
+            return Err(RequestWorkflowError::Rejected {
+                reason: IntakeRejectionReason::InvalidField,
+                field_path: format!("/desired_artifacts/{index}"),
+            });
+        }
+    }
+    Ok(values)
+}
+
+fn optional_constraints(
+    object: &serde_json::Map<String, Value>,
+) -> Result<Vec<String>, RequestWorkflowError> {
+    let Some(value) = object.get("constraints") else {
+        return Ok(Vec::new());
+    };
+    let values = value.as_array().ok_or(RequestWorkflowError::Rejected {
+        reason: IntakeRejectionReason::InvalidField,
+        field_path: "/constraints".to_owned(),
+    })?;
+    if values.len() > 12 {
+        return Err(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::InvalidField,
+            field_path: "/constraints".to_owned(),
+        });
+    }
+    let mut constraints = Vec::new();
+    for (index, value) in values.iter().enumerate() {
+        let Some(text) = value.as_str() else {
+            return Err(RequestWorkflowError::Rejected {
+                reason: IntakeRejectionReason::InvalidField,
+                field_path: format!("/constraints/{index}"),
+            });
+        };
+        let trimmed = text.trim();
+        let len = trimmed.chars().count();
+        if len == 0 || len > 240 {
+            return Err(RequestWorkflowError::Rejected {
+                reason: IntakeRejectionReason::InvalidField,
+                field_path: format!("/constraints/{index}"),
+            });
+        }
+        constraints.push(trimmed.to_owned());
+    }
+    Ok(constraints)
+}
+
+fn required_string_array(
+    object: &serde_json::Map<String, Value>,
+    field: &'static str,
+) -> Result<Vec<String>, RequestWorkflowError> {
+    let values = object
+        .get(field)
+        .ok_or(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::MissingRequiredField,
+            field_path: format!("/{field}"),
+        })?
+        .as_array()
+        .ok_or(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::InvalidField,
+            field_path: format!("/{field}"),
+        })?;
+    if values.is_empty() {
+        return Err(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::InvalidField,
+            field_path: format!("/{field}"),
+        });
+    }
+    values
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            value
+                .as_str()
+                .filter(|text| !text.trim().is_empty())
+                .map(ToOwned::to_owned)
+                .ok_or(RequestWorkflowError::Rejected {
+                    reason: IntakeRejectionReason::InvalidField,
+                    field_path: format!("/{field}/{index}"),
+                })
+        })
+        .collect()
+}
+
+fn require_true(
+    object: &serde_json::Map<String, Value>,
+    field: &'static str,
+) -> Result<(), RequestWorkflowError> {
+    if object.get(field).and_then(Value::as_bool) == Some(true) {
+        return Ok(());
+    }
+    Err(RequestWorkflowError::Rejected {
+        reason: IntakeRejectionReason::InvalidField,
+        field_path: format!("/{field}"),
+    })
+}
+
+fn optional_visibility(
+    object: &serde_json::Map<String, Value>,
+    default: StoredRequestVisibility,
+) -> Result<StoredRequestVisibility, RequestWorkflowError> {
+    match object.get("visibility").and_then(Value::as_str) {
+        None => Ok(default),
+        Some("public") => Ok(StoredRequestVisibility::Public),
+        Some("private") => Ok(StoredRequestVisibility::Private),
+        Some(_) => Err(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::InvalidField,
+            field_path: "/visibility".to_owned(),
+        }),
+    }
+}
+
+fn optional_auto_repair_preference(
+    object: &serde_json::Map<String, Value>,
+    default: AutoRepairPreference,
+) -> Result<AutoRepairPreference, RequestWorkflowError> {
+    match object.get("auto_repair_preference").and_then(Value::as_str) {
+        None => Ok(default),
+        Some("no_automated_repair") => Ok(AutoRepairPreference::NoAutomatedRepair),
+        Some("request_bounded_code_repair") => Ok(AutoRepairPreference::RequestBoundedCodeRepair),
+        Some(_) => Err(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::InvalidField,
+            field_path: "/auto_repair_preference".to_owned(),
+        }),
+    }
+}
+
+fn reject_unsafe_text(value: &str) -> Result<(), RequestWorkflowError> {
+    let lowercase = value.to_ascii_lowercase();
+    let looks_like_email = value.contains('@') && value.contains('.');
+    let looks_like_url = lowercase.contains("://")
+        || lowercase.starts_with("http:")
+        || lowercase.starts_with("https:");
+    let looks_like_local_path = lowercase.contains("/users/")
+        || lowercase.contains("\\users\\")
+        || lowercase.contains("/home/")
+        || lowercase.contains("\\home\\");
+    let looks_like_secret = lowercase.contains("sk-")
+        || lowercase.contains("api key")
+        || lowercase.contains("api_key")
+        || lowercase.contains("secret")
+        || lowercase.contains("provider endpoint")
+        || lowercase.contains("provider key");
+    let looks_like_long_digit_id = value.chars().filter(char::is_ascii_digit).count() >= 10;
+    if looks_like_email
+        || looks_like_url
+        || looks_like_local_path
+        || looks_like_secret
+        || looks_like_long_digit_id
+    {
+        return Err(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::UnsafeText,
+            field_path: "/request_text".to_owned(),
+        });
+    }
+    Ok(())
+}

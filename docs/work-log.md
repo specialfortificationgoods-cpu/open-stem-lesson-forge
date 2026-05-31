@@ -1,0 +1,511 @@
+# Open STEM Lesson Forge Work Log
+
+## 2026-05-30
+
+### Progress
+
+- Created project-local `AGENTS.md` to clarify that this repository is Open STEM Lesson Forge, not the separate Rust/Bevy game project.
+- Added `.gitignore` entry for `.superpowers/` visual brainstorming artifacts.
+- Started a goal: define and write implementation specs using targeted adversarial subagent review cycles until each reviewed spec passes.
+- Drafted `docs/specs/000-spec-roadmap.md` as the first artifact for adversarial review.
+- Dispatched targeted adversarial reviewers for deterministic-core boundaries, workflow/trust boundaries, and stack/MVP scope.
+- Received workflow/trust reviewer result: `FAIL`; roadmap needs stronger workflow state machine, data contract, promotion policy, agent verification, human review, trust/identity, API behavior, deterministic validation/policy, and abuse/moderation coverage.
+- Received MVP/stack reviewer result: `FAIL`; acceptance tests must come first, API behavior cannot be deferred past the implementation gate, and the spec set should be tighter.
+- Received deterministic-core reviewer result: `PASS for proceeding with spec writing; FAIL for coding`; roadmap needs first-class no-leak/data-classification sequencing.
+- Revised `docs/specs/000-spec-roadmap.md` to put MVP acceptance tests first, add a data-classification/no-leak spec, separate workflow/promotion concerns, add hard sequencing gates, and require user approval for substantive design decisions.
+- Received roadmap re-review result from MVP/stack reviewer: `FAIL`; security/privacy/abuse checklist gated later specs but was sequenced after them.
+- Revised `docs/specs/000-spec-roadmap.md` again to make security/privacy/abuse checklist spec `002`, before the specs it gates.
+- Roadmap re-review passed all three adversarial reviewers:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+- Drafted `docs/specs/001-mvp-slice-acceptance-tests.md` using the accepted physics conservation-of-energy example.
+- Dispatched `001` to the same targeted adversarial reviewers.
+- Received `001` review results: all three reviewers returned `FAIL`.
+  - Deterministic-core gaps: prompt-like fields must be rejected across all runner-submitted objects, provider secret leakage must be tested across storage/log/error/public outputs, and no-provider/no-central-inference guardrails must be acceptance-tested.
+  - Workflow/trust gaps: plan verification task fixture was missing, planner self-verification was not denied, blocking verifier findings did not block promotion, and forged runner validation success was not denied.
+  - MVP/stack gap: plan verification task creation/claiming acceptance criteria were underspecified.
+- Revised `001` to add the plan verification task fixture, verification authority requirements, self-verification denial, blocking-finding denial, forged-validation denial, broad prompt-field rejection, broad no-leak test, and central no-provider/no-inference guardrail acceptance test.
+- Received second deterministic-core review for `001`: `FAIL`; `AT-013A` still allowed secret-like values in non-public central persistence.
+- Revised `AT-013A` to forbid secret-like values in any central persisted record, internal table, audit event, rejected-payload storage, operator log, validation report, review record, error trace, API error body, or public output; only redaction markers, rejected field names, hash-free classifications, or structured policy error codes may be stored.
+- `001-mvp-slice-acceptance-tests.md` passed all three adversarial reviewers:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+- User suggested the Codex Security plugin may be useful for the spec work.
+- Loaded Codex Security threat-model and security-scan guidance. Decided not to run a full security scan yet because the repository currently contains specs/docs rather than implementation code; instead added a Codex Security threat-model reviewer to the `002` review gate.
+- Drafted `docs/specs/002-security-privacy-abuse-resistance-checklist.md`.
+- Dispatched `002` to deterministic-core, workflow/trust, MVP/stack, and Codex Security threat-model reviewers.
+- Received `002` review results: all four reviewers returned `FAIL`.
+  - Deterministic-core gaps: non-deferrable boundary checks were missing, and dependency guardrails covered only direct `apps/api` imports instead of dependency graphs/shared packages.
+  - Workflow/trust gaps: plan verification authority, review laundering, and forged validation needed explicit checklist gates.
+  - MVP/stack gap: executable-content wording contradicted the accepted MVP `checker.py` artifact.
+  - Codex Security gaps: identity/authz/replay, public artifact serving isolation, and abuse/availability controls were missing.
+- Revised `002` to add non-deferrable security boundary rules, dependency-graph guardrails, identity/authorization/replay checks, stricter plan verification gate checks, review laundering tests, forged validation tests, public artifact serving checks, abuse/quota/availability checks, and an explicit `checker.py` exception under deterministic validator restrictions.
+- Second `002` review results:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security reviewer: `FAIL`; outbound network / SSRF controls for attacker-controlled URLs were missing.
+- Revised `002` to add outbound network and SSRF checks, including no central-core fetching of attacker-controlled URLs in MVP unless a later reviewed allowlisted fetch subsystem defines schemes, hosts, private-address blocking, DNS rebinding protection, redirect controls, limits, safe MIME handling, and adversarial URL tests.
+- Codex Security reviewer re-reviewed the outbound network / SSRF section and returned `PASS`.
+- `002-security-privacy-abuse-resistance-checklist.md` passed all four reviewers:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security threat-model reviewer: `PASS`.
+- Started `003-architecture-stack-no-inference-boundary.md` as a draft with stack decision pending user approval.
+- Added a stack decision brief comparing Python/FastAPI, Rust, and hybrid, with a recommendation for Python/FastAPI MVP.
+- User approved trying a Rust MVP and suggested borrowing best practices from `clan_guild_creed`.
+- Inspected `/Users/macmini/Documents/GitHub/clan_guild_creed/AGENTS.md`, `docs/STYLE.md`, and `Cargo.toml`.
+- Revised `003` to lock Rust MVP, borrow transferable Rust workspace practices from `clan_guild_creed`, and avoid game-specific Bevy/Avian3d/EGUI assumptions.
+- Dispatched `003` to deterministic-core, workflow/trust, MVP/stack, and Codex Security threat-model reviewers.
+- Initial `003` review results:
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Deterministic-core reviewer: `FAIL`; release assertions at trust boundaries would turn invalid untrusted input into panics/DoS and conflict with no-panic library policy.
+  - Codex Security reviewer: `FAIL`; generated `checker.py` execution lacked an explicit process/sandbox boundary away from central assets, and Rust supply-chain guardrails were too narrow.
+- Revised `003` to require typed structured errors at trust boundaries, restrict assertions to unreachable internal invariants after validation, require generated-code execution outside the central API process with no DB/secrets/network and strict resource/filesystem limits or static-only validation, and add `cargo deny`/lockfile/source/license/build-script/proc-macro/unsafe-transitive supply-chain guardrails.
+- `003-architecture-stack-no-inference-boundary.md` passed all four reviewers:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security threat-model reviewer: `PASS`.
+- Drafted `docs/specs/004-data-classification-redaction-logging-no-leak.md`.
+- Dispatched `004` to deterministic-core, workflow/trust, MVP/stack, and Codex Security threat-model reviewers.
+- Initial `004` review results:
+  - Deterministic-core reviewer: `PASS`.
+  - MVP/stack reviewer: `FAIL`; `PlanVerification` allowlist conflicted with the accepted `verifier_runner_id` fixture, and request prompt-injection prose handling conflicted with `001`.
+  - Workflow/trust reviewer: `FAIL`; submitted status/outcome fields were not explicitly non-authoritative, forged validation was not directly tested, forged reviewer identity was not blocked at the data boundary, and free-text display/execution rules were under-specified.
+  - Codex Security reviewer: `FAIL`; allowlisted public/free-text fields could still carry secrets/PII, and attacker-controlled object keys/field paths could leak via supposedly safe field paths.
+- Revised `004` to add a cross-cutting attacker-controlled text rule, schema-derived safe field path requirements, inert request prompt-injection prose handling, separate PlanVerification/CritiqueReport allowlists with `verifier_runner_id`, non-authoritative submitted state claims, system-bound reviewer authority, and tests for free-text escaping/redaction, attacker-controlled key/path leaks, forged validation, and forged reviewer identity.
+- `004-data-classification-redaction-logging-no-leak.md` passed all four reviewers:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security threat-model reviewer: `PASS`.
+- Drafted `docs/specs/005-core-data-model-state-machine.md`.
+- Dispatched `005` to deterministic-core, workflow/trust, MVP/stack, and Codex Security threat-model reviewers.
+- Self-review before reviewer results clarified `005` with explicit `scope_id`, explicit plan-verification and human-review task transitions, atomic lease/claim/submission rules, and promotion uniqueness/rollback requirements.
+- Initial `005` review results: all four reviewers returned `FAIL`.
+  - Deterministic-core gaps: task/lease aggregate semantics, idempotency/replay rules for all mutating surfaces, cross-entity uniqueness constraints, and request aggregate semantics were under-specified.
+  - Workflow/trust gaps: valid human review records were not separated from approval outcomes, blocking findings were not explicit peer-review blockers, and review-laundering conflict rules lacked durable actor provenance.
+  - MVP/stack gaps: `Request` state naming drifted from accepted `001` fixture, human review was modeled as both `WorkPacket` and `ReviewTask`, and wire fixture actor IDs lacked core-field mapping.
+  - Codex Security gaps: successful lease-bound submissions did not atomically consume leases, and submitted cross-entity IDs could confuse server-derived lineage.
+- Revised `005` to define task-like states as aggregate availability with lease lifecycle on `Lease`, align request state with `requested`, add wire-to-core mapping, require lease consumption and replay-safe idempotency, add cross-entity lineage rules, define uniqueness constraints, scope request aggregate states to the MVP selected artifact bundle, model `ReviewTask` as the claim projection of the human-review `WorkPacket`, separate valid review records from approval outcomes, and add review conflict/provenance rules.
+- `005-core-data-model-state-machine.md` passed all four reviewers:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security threat-model reviewer: `PASS`.
+- Made a narrow compatibility amendment to `005` so active-lease uniqueness permits bounded planning fanout only when a later scheduling spec explicitly defines lease slots; `006` is that scheduling spec for `PlanningTask`.
+- Drafted `docs/specs/006-request-intake-to-planning-task-workflow.md`.
+- Initial `006` review results: all four reviewers returned `FAIL`.
+  - Shared gap: bounded planning fanout referenced lease slots but did not define `Lease.lease_slot`, slot allocation, slot reuse, same-actor monopolization prevention, or `claimed -> claimed` additional-claim semantics.
+  - Deterministic-core gaps: planning task state after first fanout submission, non-submit command idempotency, heartbeat unknown fields, and request edit behavior were under-specified.
+  - Workflow/trust and MVP/stack gaps: request edit/revision behavior introduced non-testable branches and stale-output ambiguity.
+  - Codex Security gap: same runner could claim all fanout slots.
+- Revised `005` to add optional `Lease.lease_slot`; revised `006` to define deterministic slot allocation, one active planning lease per actor, `claimed -> claimed` fanout behavior, first-valid-proposal fanout closure, idempotency for claim/release/heartbeat/expiry/replacement, strict heartbeat field rejection, and MVP immutable accepted requests.
+- `006-request-intake-to-planning-task-workflow.md` and the narrow `005` fanout amendment passed all four reviewers:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security threat-model reviewer: `PASS`.
+- Drafted `docs/specs/007-proposed-task-graph-schema-policy-promotion-reconciliation.md`.
+- Initial `007` review results:
+  - Workflow/trust reviewer: `PASS`.
+  - Deterministic-core reviewer: `FAIL`; rejected proposals could accidentally close fanout, medium/high risk state mapping conflicted with spec `005`, and verification-task creation lacked uniqueness/idempotency.
+  - MVP/stack reviewer: `FAIL`; rejected-proposal recovery conflicted with fanout expectations, `assumptions`/`missing_information`/`validation_plan` JSON shape was ambiguous, risk state handling was not deterministic, and future compatibility tests overbuilt the MVP.
+  - Codex Security reviewer: `FAIL`; `validation_plan` was required but not schema-bounded, leaving a runner-controlled field for hidden network/provider/command/local-path instructions.
+- Revised `007` to define `assumptions` and `missing_information` as required bounded arrays, make `validation_plan` an enum-only array, clarify that rejected proposals do not satisfy `min_accepted_proposals` or close fanout, make only `schema_policy_validated` proposals close fanout, add plan-verification task uniqueness/idempotency, map all non-low risk detected during validation to `policy_rejected`, and remove future compatibility-engine testing from the MVP.
+- `007-proposed-task-graph-schema-policy-promotion-reconciliation.md` passed all four reviewers:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security threat-model reviewer: `PASS`.
+- Drafted `docs/specs/008-central-api-contract.md`.
+- Incorporated user API-security suggestion into `008`: HTTPS is mandatory outside loopback; REST/HTTP JSON remains the MVP command transport for deterministic idempotent commands; read-only SSE is allowed for event streaming; WebSocket is deferred unless a later reviewed spec preserves the same auth, idempotency, replay, and validation rules.
+- Dispatched `008` to deterministic-core, workflow/trust, MVP/stack, and Codex Security threat-model reviewers.
+- Initial `008` review results:
+  - Workflow/trust reviewer: `PASS`.
+  - Deterministic-core reviewer: `FAIL`; idempotency hashing conflicted with secret no-hash rules, claim replay conflicted with token-returned-once, human review had two claim paths, and trusted validation was split between work-packet claim and validation endpoint.
+  - MVP/stack reviewer: `FAIL`; human-review and validation claim paths were ambiguous, and artifact submission needed a closed MVP request shape instead of an under-specified `artifact_intake_ref` placeholder.
+  - Codex Security reviewer: `FAIL`; reverse-proxy/test actor controls were not tight enough, and availability controls did not cover read/list/poll/SSE/public enumeration surfaces.
+- Revised `008` to exclude claim tokens and secret fields from persisted idempotency fingerprints, define claim replay without token re-display, restrict reverse-proxy actor headers and test actor injection, add read/list/poll/SSE/public availability limits, make generic work-packet claim generation-only, route human review only through `ReviewTask`, bind trusted validation to a validation work-packet lease and validation endpoint, and define a closed `ArtifactBundleReference` request shape for the MVP.
+- Second `008` review results:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - Codex Security threat-model reviewer: `PASS`.
+  - MVP/stack reviewer: `FAIL`; validation report submission required a validation lease but the API did not define how `system_validator` obtains that lease.
+- Revised `008` to add dedicated `/v1/validation-work-packets/{work_packet_id}/claim`, heartbeat, and release endpoints restricted to `system_validator`, keeping generic work-packet claims generation-only.
+- Final `008-central-api-contract.md` review results:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security threat-model reviewer: `PASS`.
+- Drafted `docs/specs/009-runner-contract-capability-summary-local-config.md`.
+- Self-review adjusted `009` so MVP dummy planner, verifier, and generator use distinct runner actor IDs/configurations rather than one runner advertising all roles.
+- Dispatched `009` to deterministic-core, workflow/trust, MVP/stack, and Codex Security threat-model reviewers.
+- Initial `009` review results:
+  - Workflow/trust reviewer: `PASS`.
+  - Deterministic-core reviewer: `FAIL`; `central_api_base` needed an explicit allowlist distinct from forbidden provider/network destinations, `validator_client` conflicted with the `system_validator` boundary, and lost claim responses were undefined under token-returned-once replay semantics.
+  - MVP/stack reviewer: `FAIL`; dummy planner validation plan conflicted with spec `007`, standalone heartbeat/release commands lacked claim-token storage semantics, and `mtls_files` was not a closed MVP config schema.
+  - Codex Security reviewer: `FAIL`; runner transport controls did not require rejecting unsafe schemes/origins, TLS failures, redirects, or ambient proxy credential forwarding.
+- Revised `009` to make `central_api_base` the only allowed outbound API origin with HTTPS/loopback/redirect/proxy rules, remove normal-runner `validator_client`, defer `mtls_files`, replace mutating standalone claim/heartbeat/release CLI with read-only `list-claimable` plus in-memory `run-once`, define lost-claim-token behavior, and align dummy planner `validation_plan` with the enum-only spec `007` array.
+- `009-runner-contract-capability-summary-local-config.md` passed all four reviewers:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security threat-model reviewer: `PASS`.
+- Drafted `docs/specs/010-artifact-manifest-validation-provenance.md`.
+- Self-review revised `010` so static-only checker validation cannot produce MVP `machine_validated`; the happy path requires sandboxed `checker.py` execution to pass.
+- Dispatched `010` to deterministic-core, workflow/trust, MVP/stack, and Codex Security threat-model reviewers.
+- Initial `010` review results:
+  - Codex Security threat-model reviewer: `PASS`.
+  - Deterministic-core reviewer: `FAIL`; validation report wire status needed explicit mapping to spec `005` `ValidationReport.state`, and `python_checker_runs` lacked an exact checker execution contract.
+  - Workflow/trust reviewer: `FAIL`; validation report outcome vocabulary did not unambiguously define artifact/review workflow effects.
+  - MVP/stack reviewer: `FAIL`; checker execution contract was not closed enough, sandbox enforcement needed an implementable model, and spec `010` report checks conflicted with the shorter spec `001` fixture.
+- Revised `010` to define the exact `python3 -I checker.py` execution contract, required stdout/stderr/exit behavior, required conservation-of-energy sample cases, sandbox enforcement requirements, report-status-to-core-state mapping, and the rule that spec `010` supersedes the shorter spec `001` validation report fixture with one check record per `010` check.
+- Second `010` review results:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security reviewer: `FAIL`; executing `checker.py` directly allowed runner-controlled code to self-report success by printing `OK`.
+- Revised `010` so `checker.py` is validated by a validator-owned harness that performs static AST checks, imports exact pure functions, runs validator-owned sample cases, ignores runner self-reported success, and fails if the required function contract is absent.
+- Third `010` review results after harness revision:
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security reviewer: `PASS`.
+  - Deterministic-core reviewer: `FAIL`; harness/checker command used relative paths despite an empty sandbox working directory.
+- Revised `010` to use explicit read-only sandbox mount paths: `/validator-runtime/validator_checker_harness.py` and `/bundle/checker.py`, with the harness rejecting any other checker path.
+- Final `010-artifact-manifest-validation-provenance.md` review results:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security threat-model reviewer: `PASS`.
+- Drafted `docs/specs/011-critique-human-review-publication-promotion.md`.
+- Dispatched `011` to deterministic-core, workflow/trust, MVP/stack, and Codex Security threat-model reviewers.
+- Initial `011` review results:
+  - Workflow/trust reviewer: `FAIL`; critique was described as advisory, but critique findings could still look like central blocking findings and accidentally veto promotion.
+  - Codex Security threat-model reviewer: `FAIL`; conflict checks needed to fail closed on missing/unverified independence metadata, and high-risk finding types needed central non-waivable blocking policy rather than trusted reviewer severity.
+  - MVP/stack reviewer: `FAIL`; review finding input was not clearly separated from persisted finding fields, critique submission conflicted with the MVP API surface, and waiver/deprecation acceptance tests referenced commands that the MVP does not define.
+  - Deterministic-core reviewer: `FAIL`; critique-created finding authority was ambiguous, blocking policy needed a closed derivation table, and public label derivation needed closed state-to-label precedence.
+- Revised `011` to make critique schema-only and non-ingested in the MVP, define input-only critique/review finding shapes, require fail-closed reviewer independence metadata, derive `blocking` from a closed central finding policy, defer waiver/duplicate/superseded/deprecation commands, and define public-label visibility/precedence rules.
+- Final `011-critique-human-review-publication-promotion.md` review results:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security threat-model reviewer: `PASS`.
+- Drafted `docs/specs/012-mvp-guardrail-end-to-end-test-matrix.md`.
+- Initial `012` review results:
+  - Workflow/trust reviewer: `PASS`.
+  - Deterministic-core reviewer: `FAIL`; source-state guard coverage, broader replay behavior, deterministic fanout closure, and database authority constraints needed explicit rows.
+  - MVP/stack reviewer: `FAIL`; matrix rows needed fixed required statuses, optional SSE could not be mandatory, `cargo deny` needed an offline/no-fetch gate, and medium/high-risk proposal expectations needed to match spec `007`.
+  - Codex Security threat-model reviewer: `FAIL`; runner authority tests needed explicit cross-lineage and body-supplied actor/ID forgery coverage.
+- Revised `012` to add required row-status assignments, offline `cargo deny check --disable-fetch`, deterministic fanout closure tests, expanded lease/replay tests, source-state guard tests for every mutating surface, cross-lineage runner authority tests, durable database constraint tests, exact `policy_rejected` behavior for medium/high-risk proposals, and optional SSE handling separated from required polling/list redaction.
+- Second `012` review results:
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security threat-model reviewer: `PASS`.
+  - Deterministic-core reviewer: `FAIL`; `GRAPH-GATE-005` still left fanout selection ambiguous by implying selection might wait for later verification.
+- Revised `012` so the first `schema_policy_validated` proposal closes planning fanout immediately, uniquely creates the plan verification task, and remains the only eligible proposal even if it later fails verification.
+- Final `012-mvp-guardrail-end-to-end-test-matrix.md` review results:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security threat-model reviewer: `PASS`.
+- Started follow-up security audit focused on malicious runner code execution, runner sandboxing, central API MITM/transport, request/runner injection, and inappropriate content moderation.
+- Drafted `docs/security/security-audit-001-runner-transport-ingestion-moderation.md`.
+- Hardened specs based on audit findings:
+  - Added a request moderation task/report gate before planning task creation.
+  - Added explicit runner sandbox and no-tool-execution policy for MVP runners.
+  - Strengthened non-loopback runner TLS trust policy with pin/private-CA/mTLS requirements.
+  - Added deterministic `obvious_inappropriate_content_heuristic` artifact validation check.
+  - Added moderation, runner sandbox, TLS, and inappropriate-content rows to the MVP guardrail matrix.
+- Initial security hardening review results:
+  - Codex Security reviewer: `FAIL`; a valid but malicious moderation runner could still submit `allow_mvp_planning` for request text that obviously matched unsafe-content categories.
+  - Deterministic-core reviewer: `FAIL`; moderation report lineage/uniqueness rules were incomplete, moderation decision/category/reason consistency was not closed, and spec `001` still had prose validation-plan strings.
+  - Workflow/trust reviewer: `FAIL`; moderation report submission did not explicitly include lease credentials and consume the lease.
+  - MVP/stack reviewer: `FAIL`; moderation lease credential body, moderator actor mapping, spec `001` validation plan, and TLS pin/trust config schema needed exact implementable rules.
+- Revised the hardening changes to require `lease_id` and `claim_token` on moderation report submissions, derive moderator actor only from authenticated lease context, add moderation report uniqueness and lineage rules, close moderation category/reason consistency, add deterministic unsafe-request heuristic override against malicious positive moderation reports, define exact runner TLS config fields, and update spec `001` to the enum-only validation plan.
+- Final security hardening review results:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security threat-model reviewer: `PASS`.
+- Started follow-up research/spec loop for task-scoped code execution because code-capable runners are core MVP functionality.
+- Research inputs considered:
+  - GitHub Actions self-hosted runner guidance: self-hosted runners can be persistently compromised by untrusted code, so code execution needs job/task isolation and short-lived scoped credentials.
+  - GitHub runner authentication design: per-job tokens expire when the job completes and runner registration separates local host account from service authorization.
+  - SLSA and in-toto provenance: artifacts should be tied to structured attestations over subject digests, producer, instructions, and environment.
+  - Kubernetes security context/seccomp patterns: sandboxing should layer non-root execution, no privilege escalation, dropped capabilities, read-only root, seccomp/AppArmor where available, network denial, and resource limits.
+- Drafted `docs/specs/013-task-scoped-code-execution-sandbox-provenance.md`.
+- Wired spec `013` into roadmap and existing specs:
+  - MVP dummy generator now demonstrates code-generation runner behavior by computing digests and running a sandboxed self-test when available.
+  - Runner self-test reports are internal provenance evidence only and cannot replace trusted validator results.
+  - Work-packet output submission can include file digests, bundle digest, and spec `013` self-test evidence.
+  - Proposed task graphs may request only advisory `code_generation_only`; central core assigns executable self-test policy during deterministic promotion.
+  - Validator recomputes digests and ignores runner self-test success as validation authority.
+- First adversarial review of the code-execution extension:
+  - Deterministic-core reviewer: `PASS`.
+  - Codex Security reviewer: `PASS`.
+  - Workflow/trust reviewer: `FAIL`; the generation submit API embedded a partial `runner_self_test_report` that conflicted with the full spec `013` report and needed explicit lease/actor/policy lineage checks.
+  - MVP/stack reviewer: `FAIL`; the API wrapper conflicted with the closed `ArtifactBundleReference` shape, digest canonicalization needed implementation-grade detail, `RunnerSelfTestReport` needed a closed JSON contract, and optional signing conflicted with signature guardrail tests.
+- Revised the extension after review:
+  - Spec `008` now submits a closed `generation_output_v1` wrapper with a nested closed `ArtifactBundleReference` and separate `provenance` object.
+  - Spec `013` now defines digest string format, filename normalization, exact file-byte hashing, RFC 8785 canonical JSON bundle digest bytes, closed check result objects, and mandatory Ed25519 runner self-test attestations.
+  - Specs `001`, `009`, and `012` now align fixtures, config, and guardrails with signed self-test provenance.
+- Second adversarial review of the code-execution extension:
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security reviewer: `PASS`.
+  - Deterministic-core reviewer: `FAIL`; spec `008` still made the self-test report conditional despite `attestation_required=true`, and it did not define equality between duplicated top-level provenance digests and report digests.
+- Revised spec `008` to make `provenance` a closed object, require full signed `runner_self_test_report` for `sandboxed_self_test_python_checker` work packets including `not_run_*` self-test cases, and reject mismatches between top-level provenance digests and report digests.
+- Deterministic-core re-review still found one stale allowlist phrase describing spec `013` self-test evidence as optional; revised the endpoint allowlist to match the required-report rule for MVP self-test generation work.
+- Final `013` review results:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security threat-model reviewer: `PASS`.
+- Started follow-up goal for secure runner-driven code review, critique, and repair of generated code drafts.
+- Drafted `docs/specs/014-secure-code-review-critique-repair.md`.
+- Wired draft spec `014` into roadmap and existing specs:
+  - Added code critique and repair task types with sandboxed execution policies.
+  - Added request `auto_repair_preference` so teachers can request bounded automated repair.
+  - Added runner `automated_repair_loop_opt_in` config so volunteer runner operators can opt into automated repair work.
+  - Added signed `CodeCritiqueReport`, `CodeRepairReport`, and `CodeRepairInterruptionReport` contracts.
+  - Added repair-loop interruption handling for runner quota exhaustion, operator budget exhaustion, provider unavailability, sandbox unavailability, suspected looping bugs, suspected malicious tasks, and local policy refusal.
+  - Added guardrail rows for critique authority, repair draft creation, dual opt-in automated repair, safe interruption/continuation, and replay/broadened-change rejection.
+
+### Decisions
+
+- User confirmed this is a separate project from the Rust/Bevy game project.
+- User confirmed a project-local `AGENTS.md` should exist.
+- User instructed that work should proceed spec-first.
+- User instructed that request-to-task generation must include agent-driven and human-review-based verification.
+- User instructed that design decisions should be asked explicitly and logged.
+- Process decision: maintain `docs/work-log.md` as the project work log.
+- User accepted the first MVP slice example: physics, conservation of energy, ages 14-16, worksheet + answer key + Python checker + teacher notes, with simulations deferred.
+- User approved the Rust MVP stack and asked to borrow best practices from `clan_guild_creed`.
+- Spec decision carried from prior user direction: the MVP requires independent agent-driven plan verification before promotion; direct one-planner promotion is not part of the MVP state machine.
+- Process decision from user suggestion: during code generation / implementation phases, use CodeRabbit to review code changes where practical, in addition to local tests and targeted reviewers for higher-risk architecture changes.
+- API transport decision in draft `008`: use HTTP JSON for MVP command/query endpoints, require HTTPS outside loopback, allow read-only SSE for event streams, and defer WebSocket command channels until a reviewed spec proves they preserve deterministic command semantics and security boundaries.
+- Security hardening decision: moderation is a separate runner/non-core service evidence gate; central core must not call model or moderation providers directly.
+- Security hardening decision: MVP runners execute no local tools or generated code from task content; future tool execution requires a separate reviewed spec.
+- Security hardening decision: non-loopback runner-to-central communication requires explicit TLS trust policy, not just a URL string.
+- Code-runner extension decision: task trust is represented as centrally assigned `ExecutionPolicy` on work packets, never as request trust.
+- Code-runner extension decision: MVP generator self-tests may execute generated `checker.py` only inside the `python_checker_self_test_v1` sandbox profile.
+- Code-runner extension decision: hashes/signatures/attestations prove provenance integrity but never replace lease authorization or trusted validation.
+- Code-runner extension decision: MVP self-test provenance requires Ed25519 runner signing keys registered with the central backend; unsigned reports are not accepted by central API.
+- Code-review/repair decision: use advisory critique plus bounded repair proposals as the base design; repair creates a new draft artifact and never mutates an existing artifact in place.
+- Code-review/repair decision from user direction: automated repair loops are allowed only when the teacher requests bounded repair and a volunteer runner operator opts into automated repair work.
+- Code-review/repair decision from user direction: if the runner performing an automated repair loop exhausts quota or local budget before completion, it submits a safe signed interruption report, releases the work through central state, and continuation on another opted-in runner requires bounded `runner_operator`, curator, or admin review.
+- Initial `014` adversarial review results:
+  - MVP/stack reviewer: `FAIL`; report schemas, repair target IDs, capability summary/CLI, continuation API, and loop states were not implementable enough.
+  - Codex Security reviewer: `FAIL`; report attestations did not sign all routing fields, automated repair could copy unsafe non-code files before safety validation, and raw-code/prompt smuggling rules were inconsistent.
+  - Deterministic-core reviewer: `FAIL`; artifact-producing repair reports were mixed with no-artifact statuses, repair attempt idempotency was under-specified, and automated repair decline reasons were not closed.
+  - Workflow/trust reviewer: `FAIL`; continuation review lacked an authority surface, `interrupted` was not a `WorkPacket` state, no-artifact repair was ambiguous, and repair lineage was not modeled in core state.
+- Revised `014` and affected specs after review:
+  - Added a durable `RepairAttempt` ledger, repair lineage fields, target artifact preallocation, continuation counters, and uniqueness rules.
+  - Added `runner_operator` actor type and a closed `RepairContinuationDecision` command/API path.
+  - Added `WorkPacket.state=interrupted`.
+  - Split artifact-producing `CodeRepairReport` from no-artifact `CodeRepairInterruptionReport`.
+  - Made report signatures cover the entire closed report minus `attestation`.
+  - Added deterministic automated-repair decline reason priority and loop-status transitions.
+  - Required non-code safety checks before automated repair can copy source files.
+  - Tightened no-leak rules for raw code snippets, prompt-like text, tool-call JSON, Markdown/HTML, provider output, local paths, URLs, and secrets.
+- Deterministic-core re-review still found two blockers: continuation decision fields were accidentally listed under `CodeRepairInterruptionReport`, and repeated continuation indexing/state transitions were ambiguous.
+- Revised `014`, `008`, and `005` to keep continuation decisions out of interruption reports, define interrupted vs next continuation indexes, update the continuation API example, and add `RepairAttempt.continued -> claimed` for repeated continuation cycles.
+- Second re-review found remaining blockers:
+  - Workflow/trust: repair attempts could get stuck on lease release/expiry, and continuation authority needed to stay separate from interruption reports.
+  - MVP/stack: auto-loop mode naming conflicted, `repair_of_artifact_id` was inconsistent with repair parent lineage, and continuation index naming needed exactness.
+  - Security: continuation after suspected malicious task, suspected loop, or local policy refusal needed deterministic consistency rules.
+- Revised specs again to align auto-loop mode on `dummy_code_repairer_auto_loop`, use `repair_parent_artifact_id` consistently, define repair attempt release/expiry recovery, and restrict continuation outcomes by original interruption reason.
+- MVP/stack re-review found one enum mismatch: `runner_operator_budget_exhausted` was continuable but had no matching continuation safe reason code. Added `operator_budget_exhausted_continue_elsewhere`.
+- Final `014` review results:
+  - Deterministic-core reviewer: `PASS`.
+  - Workflow/trust reviewer: `PASS`.
+  - MVP/stack reviewer: `PASS`.
+  - Codex Security threat-model reviewer: `PASS`.
+- Started implementation goal for the secure runner-driven code review, critique, and repair capability.
+- Implemented the initial Rust workspace foundation:
+  - Added root Cargo workspace and `lessonforge_core`.
+  - Added spec `014` core domain contracts for automated repair opt-in policy, repair-loop statuses, work-packet transitions, repair-attempt transitions, continuation decisions, critique/repair/interruption reports, typed check results, digest sets, and runner attestations.
+  - Added closed serde contracts with `deny_unknown_fields`.
+  - Added RFC 8785 canonical unsigned-payload digest helpers and Ed25519 runner-key verification bound to server-derived report contexts.
+  - Added safe submitted-text validation for critique findings and digest validation for source, repaired, bundle, and partial-work digests.
+  - Added 33 Rust tests covering dual opt-in, decline priority, continuation authority, work-packet and repair-attempt transitions, report schema rejection, no-artifact interruption separation, changed-file and digest constraints, replay/tamper rejection, and runner-key signature acceptance.
+- Implementation adversarial review loop:
+  - First deterministic-core, security, and Rust/API reviewers returned `FAIL` on incomplete repair report schema, arbitrary JSON checks, insufficient continuation authorization context, weak attestation, partial repair-attempt transitions, and safe-text gaps.
+  - Revised implementation to add full repair report fields, typed required check coverage, server-derived continuation/report contexts, exact file-scope validation, stronger attestation shape, and broader transition coverage.
+  - Second Rust/API reviewer returned `FAIL` on uppercase digest acceptance, missing digest validation, duplicate reviewed-file acceptance, and lack of attestation payload-digest verification.
+  - Revised implementation to require lowercase `sha256:[0-9a-f]{64}`, validate all report digest fields, require exact `reviewed_files=["checker.py"]`, compute RFC 8785 canonical payload digests, and verify Ed25519 signatures against registered runner keys.
+  - Follow-up security reviewer returned `FAIL` on three remaining acceptance-authority gaps: repair reports did not bind `source_critique_report_id`, repair digest acceptance still trusted runner-reported digests instead of authoritative artifact-subsystem digests, and `RepairContinuationDecision` was not yet the full durable command shape from spec `014`.
+  - Revised implementation to add source critique trigger matching, authoritative source/repaired file digest and repaired bundle digest checks, full continuation command identifiers, actor binding, and idempotency replay-state validation.
+  - Fixed a compile blocker from `ContinuationContext` deriving `Copy` after gaining `String` fields.
+  - Follow-up security re-reviews found natural-language continuation-command smuggling in `safe_message`; replaced the blacklist-only approach with a closed MVP evidence vocabulary plus command/routing/token filters, and added regression coverage for the concrete bypass families including "Please carry on with another runner" and "Migrate the job to a spare node."
+  - Final narrow security re-review: `PASS`.
+- Current verification:
+  - `cargo test --workspace`: passing, 34 tests.
+  - `cargo clippy --workspace --all-targets -- -D warnings`: passing.
+  - `cargo fmt --all -- --check`: passing.
+- Started full-spec implementation goal.
+- Wrote implementation plan at `docs/superpowers/plans/2026-05-31-full-spec-implementation.md`.
+- Phase 1 implementation progress:
+  - Added Rust workspace crate shells for `lessonforge_api`, `lessonforge_runner`, `lessonforge_schema`, and `lessonforge_validator`.
+  - Added `.clippy.toml` and `deny.toml` seed configuration.
+  - Added `tools/verify-no-inference-core` with tests proving the real workspace passes and central provider markers fail.
+  - Phase 1 local gate passed: `cargo fmt --all -- --check`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo run -p verify-no-inference-core`.
+  - Dispatched Phase 1 adversarial reviewers for deterministic-core/no-inference, MVP/stack fit, and security/tooling.
+- Phase 1 review/fix loop:
+  - MVP/stack review found the real-workspace no-inference test was pointed at the tool crate root and could pass while scanning no central crates.
+  - Fixed the guardrail to derive the real workspace root in tests and fail closed when required central paths are missing.
+  - Deterministic-core/no-inference review then found broader guardrail risks around central schema/migration files, marker normalization, dependency metadata, and runner/validator overreach.
+  - Revised `verify-no-inference-core` to scan central path dependencies, package metadata, root schema/migration files, and normalized marker variants; kept the required core scope to `lessonforge_core`, `lessonforge_api`, and `lessonforge_schema`, while still failing if a central crate imports a forbidden local dependency.
+- Phase 2 implementation progress:
+  - Added `lessonforge_core::ids` typed ID newtypes for spec `005` entity prefixes with safe suffix validation.
+  - Added `lessonforge_core::state` actor, trust, capability, durable state, transition, artifact-label, lease-state, and lease replay primitives.
+  - Consolidated `code_repair` to re-export shared `ActorType`, `ArtifactState`, `WorkPacketState`, and `WorkPacketTransition` from the core state module.
+  - Added `crates/lessonforge_core/tests/core_state_machine.rs` covering typed IDs, capability/trust separation, request/planning/work-packet transitions, artifact state coverage, and lease consumed-once replay behavior.
+  - Current local gate passed: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and `cargo run -p verify-no-inference-core`.
+  - Phase 2 adversarial review returned `FAIL` from deterministic-core, MVP/API fit, and security reviewers.
+    - Shared blockers: lease claim tokens were not enforced by core mutation primitives, planning fanout lacked `lease_slot`, release/heartbeat/idempotency behavior was too thin, task aliases blurred planning/verification/review scheduling rules, state source guards were incomplete, and ID suffix validation was too permissive.
+  - Revised Phase 2 core primitives:
+    - Added stricter typed ID suffix screening for provider-like, student-like, credential-like, path-like, token-like, and oversized suffixes.
+    - Added MVP capability atoms used by planning and runner specs.
+    - Added surface-specific moderation, plan-verification, and review task states instead of aliases to planning state.
+    - Made bare planning lease-end transition invalid without aggregate lease/proposal facts; added `PlanningLeaseFacts` reduction rules.
+    - Added proposal source-state transition guards and safe request transition event application.
+    - Added lease slots, hashed claim-token verification, heartbeat liveness, release replay, heartbeat replay, changed-payload idempotency rejection, and token-bound submit/release/heartbeat tests.
+  - Phase 2 local rework gate passed: `cargo fmt --all -- --check`, `cargo test --workspace`, `cargo run -p verify-no-inference-core`, and `cargo clippy --workspace --all-targets -- -D warnings`.
+  - Phase 2 re-review still returned `FAIL`.
+    - Remaining blockers: proposal lifecycle omitted spec states and allowed premature promotion, moderation task state still used a generic submitted path, lease lifecycle lacked revocation and replay-before-expiry behavior, transition events were too thin, authenticated replay did not require a claim token, ID suffix filtering missed password/OAuth/cookie classes, and planning records lacked explicit fanout claim policy.
+  - Revised Phase 2 again:
+    - Completed proposed-task-graph states and guards so promotion is allowed only from `verified_for_mvp_promotion`.
+    - Restored request moderation task to `open`, `claimed`, `completed`, `cancelled` with direct `claimed -> completed`.
+    - Added `LeaseState::Revoked`, token-authenticated replay, replay-before-active/expiry checks for release/heartbeat/revoke, and revocation tests.
+    - Added event projection fields for scope, actor type, action, safe field path, and related IDs.
+    - Added `PlanningClaimPolicy` to planning task records for MVP fanout settings.
+    - Removed forbidden no-inference marker literals from central request/API tests and code.
+  - Phase 2 second local rework gate passed: `cargo fmt --all -- --check`, `cargo test --workspace`, `cargo run -p verify-no-inference-core`, and `cargo clippy --workspace --all-targets -- -D warnings`.
+  - Phase 2 second re-review still returned `FAIL`.
+    - Remaining deterministic/API blockers: lease mutation replay still checked expiry before replay for release/heartbeat/revoke, non-terminal proposed task graphs could not be superseded, and the temporary API workflow shell fabricated moderation lease authority from submitted reports.
+    - Security reviewer confirmed the API shell could accept arbitrary moderation lease credentials and create duplicate planning tasks on stale/replayed moderation reports.
+  - Revised Phase 2/API shell:
+    - Moved lease mutation replay ahead of expiry checks while still requiring actor and claim-token match.
+    - Allowed `Supersede` for non-terminal proposal states as required by the lifecycle.
+    - Added server-side moderation claim registration to the API shell, report rejection before claim, wrong-token rejection, request state updates after accepted moderation, and idempotent replay without duplicate planning tasks.
+  - Phase 2 third local gate passed: `cargo fmt --all -- --check`, `cargo test --workspace`, `cargo run -p verify-no-inference-core`, and `cargo clippy --workspace --all-targets -- -D warnings`.
+- Phase 3 implementation progress:
+  - Added `lessonforge_core::request`, `lessonforge_core::moderation`, and `lessonforge_core::planning` deterministic workflow modules.
+  - Implemented accepted request intake that creates a stored request in `moderation_pending` and one mechanical request moderation task; no planning task exists before accepted moderation.
+  - Implemented accepted/rejected/quarantined moderation report handling; only a consistent, authorized allow report creates a mechanical planning task and advances the request to `planning_open`.
+  - Added deterministic request checks for unknown fields, required fields, unsafe URL/path/email/secret-like text, inert prompt-injection text, and safe error behavior without raw rejected values in error variants.
+  - Added `crates/lessonforge_core/tests/request_workflow.rs` covering RI-001, RI-001A, RI-001B, prompt-injection inertness, and obvious unsafe intake rejection.
+  - Phase 3 local gate passed: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and `cargo run -p verify-no-inference-core`.
+  - Dispatched fresh current-state adversarial reviewers for deterministic core/spec fit, security/no-leak, and MVP/API-foundation review.
+  - Phase 3 adversarial review returned `FAIL` on incomplete field-specific intake validation, missing moderation report lineage/lease fields, missing API workflow facade, missing planning claim policy/fanout representation, and stale proposed-task-graph state gaps.
+  - Revised Phase 3 implementation to add exact MVP enum/limit/topic/duration/artifact validation, unsafe phone/provider text checks, moderation report IDs/task/request/lease/claim-token fields with context checks, planning claim policy and `claimed -> claimed` fanout state behavior, a minimal `lessonforge_api::workflow::DeterministicWorkflow` facade, and additional tests for forged/stale moderation, unsupported values, and API composition.
+  - Phase 3 rework gate passed: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and `cargo run -p verify-no-inference-core`.
+  - Dispatched focused adversarial re-review for Phase 3 blocker fixes.
+
+### Open Questions
+
+- None currently blocking spec drafting.
+
+## 2026-05-31
+
+### Full-Spec Implementation Continuation
+
+- Continued the active full-spec implementation goal after the restart.
+- Phase 4 proposed-task-graph implementation:
+  - Added `lessonforge_core::graph` with closed MVP graph validation, safe schema/policy rejection outcomes, verification task creation, plan-verification evidence checks, and promotion into work packets.
+  - Added `crates/lessonforge_core/tests/proposed_graph_policy.rs` coverage for valid MVP graph acceptance, safe rejection, dependency and human-review failures, verification gate behavior, low-risk promotion, promotion replay, non-low-risk rejection, duplicate work-packet ID rejection, and changed replay denial.
+  - Adversarial review initially failed on schema failures escaping as errors, forgeable verification evidence, non-idempotent validation, incomplete promotion replay semantics, insufficient promotion precondition revalidation, and central risk gaps.
+  - Reworked graph records to be opaque to external construction, made validation replay fingerprinted, bound verification evidence to the central verification task and lineage, made promotion return a promoted proposal snapshot, added proposal-level replay with precondition rechecks, rejected duplicate work-packet IDs before mutation, and expanded central risk classification for high-risk task types and extra executable outputs.
+  - Final adversarial re-review returned `PASS`.
+  - Local Phase 4 gates passed: `cargo fmt --all -- --check`, `cargo test --workspace`, `cargo run -p verify-no-inference-core`, and `cargo clippy --workspace --all-targets -- -D warnings`.
+- Phase 5 schema/fixture implementation:
+  - Added closed MVP schema files under `schemas/` and matching fixtures under `examples/mvp/`.
+  - Added `lessonforge_schema` deterministic validators for request, moderation report, proposed task graph, plan verification, and artifact manifest fixtures with safe error reporting.
+  - Added `tools/verify-schema-fixtures` CLI and workspace membership.
+  - Initial adversarial review returned `FAIL` on five blockers: fixture verification did not validate against checked-in schema files, nested schema objects were not closed, proposed graph local IDs/dependencies were under-validated, plan-verification schema fields had drifted from the spec, and attacker-controlled text validation was too weak.
+  - Reworked fixture verification to parse and apply the checked-in schemas with a deterministic in-repo schema subset validator before running Rust contract checks.
+  - Closed nested schema objects, added exact schema/fixture-set drift detection, added local-ID/dependency invariants, aligned plan-verification fields with the spec, and strengthened unsafe text/path/credential/student-record rejection.
+  - Removed the broad JSON Schema engine dependency trial after it pulled unrelated WASI metadata into the deterministic-core dependency scan; fixed the no-inference guard to scan Cargo metadata filtered to the current Rust host platform.
+  - Local Phase 5 focused gates passed: `cargo test -p lessonforge_schema --test fixture_validation`, `cargo run -p verify-schema-fixtures`, `cargo test -p verify-no-inference-core`, `cargo run -p verify-no-inference-core`, `cargo clippy -p lessonforge_schema --all-targets -- -D warnings`, and `cargo clippy -p verify-no-inference-core --all-targets -- -D warnings`.
+  - Follow-up adversarial review returned `FAIL` on three remaining blockers: schema used a pattern instead of the exact accepted `no_arbitrary_prompt` checked item, proposed task graph omitted spec-allowed advisory `execution_policy`, and safe-text validation missed common local paths and student profile/placement/disciplinary phrases.
+  - Added regression tests for those blockers, then fixed the plan-verification schema, proposed-task graph schema/Rust validator, and safe-text classifier. The no-inference guard now allows the exact safe checked-item token while still rejecting central schema prompt-template fields.
+  - Second follow-up adversarial review returned `FAIL` on three remaining blockers: the safe-token exception was substring-based, central schema scanning missed generic `model`/`provider` fields, and JSON Schema still accepted advisory `execution_policy` on non-generation task objects.
+  - Added regression tests for exact safe-token handling, central schema `model`/`provider` fields, and schema-level rejection of non-generation `execution_policy`; fixed the no-inference scanner and made `proposed_tasks.items` an `anyOf` over closed task-type-specific object shapes.
+  - Targeted Phase 5 re-review returned `PASS`.
+- Phase 6 artifact-bundle validator implementation:
+  - Added `lessonforge_validator` static-only artifact validation contracts for bundle shape, required files, manifest lineage/self-claims, markdown/public text safety, Python checker static safety, skipped execution reporting, safe report messages/locations, and public provenance allowlist.
+  - Added `crates/lessonforge_validator/tests/artifact_bundle.rs` coverage for valid static-only incomplete reports, missing/extra/directory entries, lineage mismatch and self-claim denial, markdown/no-leak failures, and dangerous checker rejection without execution.
+  - Initial Phase 6 adversarial review returned `FAIL` on optimistic checker scanning, local-path shebangs, incomplete markdown local-path detection, and sample-specific manifest ID validation.
+  - Added regression tests for hidden `open` access through builtins, local-path shebangs, `/etc`/`/var`/Windows markdown paths, and non-fixture context-bound IDs. Reworked static checker and public-text path rules to be more conservative and changed manifest ID checks from sample constants to context-bound opaque ID shape plus separate lineage comparison.
+  - Follow-up Phase 6 review returned `FAIL` on one remaining blocker: shebang path detection allowed other absolute interpreter paths such as `/usr/local/bin/python3` or Windows drive paths.
+  - Added shebang regression cases for Unix and Windows absolute interpreter paths and changed shebang handling to reject any path separator or drive prefix in the shebang command.
+  - Narrow Phase 6 shebang re-review returned `PASS`.
+  - Added deterministic artifact digest/provenance computation for the validator: SHA-256 file digests in canonical filename order, JCS bundle digest over schema version, static-only validator execution policy, file digests, runner actor ID, and generation work packet ID.
+  - Added golden digest/tamper tests and stale submitted-digest mismatch handling. Digest mismatches fail validation with safe code `artifact_digest_mismatch` without persisting raw changed content.
+  - Added ART-003 path-entry hardening tests for hidden platform metadata files, symlinks, and hard-linked allowed filenames. Hidden/symlink/hard-link failures use safe codes and do not persist rejected raw names.
+  - Digest/provenance adversarial review returned `FAIL`: bundle digest was bound to the validator's static-only execution mode instead of the generation work packet execution policy from spec `013`.
+  - Added `generation_execution_policy` to validator context, changed canonical bundle digest to use that policy, and updated the golden digest to the spec-aligned `sandboxed_self_test_python_checker` context.
+  - Narrow digest/provenance re-review returned `PASS`.
+  - Added explicit ART-010 through ART-012 tests: bundled runner-created `validation_report.json` is rejected as untrusted extra content, provider/model/prompt/quota/transcript strings in public text fail deterministic safety, and reports/public provenance avoid raw unsafe values.
+  - Broad Phase 6 adversarial review returned `FAIL` on two blockers: digest recomputation could still read rejected symlink/hard-link entries, and static checker scanning missed spaced dangerous calls plus required-function names hidden in comments/strings.
+  - Added regression tests for symlinked allowed filenames, `exec (...)`, and comment-only required functions. Digest computation now validates file metadata before reading, and static checker required-function detection now uses actual `def` lines rather than raw substring presence.
+  - Narrow re-review returned `FAIL` on one remaining static-checker blocker: dunder/reflection identifiers such as `__class__` were not caught by whole-token matching. Added reflection regression coverage and made any double-underscore source use a direct static-safety failure.
+  - Final narrow Phase 6 static-checker re-review returned `PASS`.
+- Phase 7 dummy runner implementation:
+  - Added `lessonforge_runner` config validation for redacted capability summaries, unsafe central API origins, provider/tool-execution rejection, canonical mode-to-capability binding, automated repair opt-in limits, non-loopback pinned TLS requirements, readable pinned CA material, and generator attestation config.
+  - Added dummy runner outputs for request moderation, planning, plan verification, and deterministic artifact generation.
+  - Removed `claim_token` from the persisted/request-moderation report schema and MVP fixture; claim tokens remain API request credentials, not runner output fields.
+  - Added generator artifact bundle writing only under the validated claim workspace output directory, with symlinked output-dir rejection and validator-compatible file/bundle digests.
+  - Added central-shaped generation output: closed `generation_output_v1` wrapper, artifact bundle reference, digest provenance, and full self-test report with `not_run_sandbox_unavailable`.
+  - Bound self-test attestations to validated runner config: `runner_key_id` comes from local config and the Ed25519 signing seed must be readable under the configured runner workspace.
+  - Phase 7 adversarial review cycles found and drove fixes for arbitrary HTTPS/TLS config, redacted summary leaks, capability spoofing, claim-token embedding, incorrect generator submission shape, partial/unsigned provenance, workspace path escape, signed payload content, and attestation-key/config binding.
+  - Phase 7 final targeted re-review returned `PASS`.
+  - Local Phase 7 gates passed: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `cargo run -p verify-no-inference-core`, and `cargo run -p verify-schema-fixtures`.
+
+### Decisions
+
+- Phase 5 implementation decision: keep schema validation as a closed deterministic MVP contract validator in Rust plus checked-in schema/fixture artifacts, rather than adding a broad JSON Schema engine dependency before the API/fixture surface stabilizes.
+
+### Full-Spec Implementation Completion Pass
+
+- Phase 8 human review, finding, and publication implementation:
+  - Added deterministic human-review task opening and claim/submission workflow rules to the core/API shell.
+  - Review task creation now requires current `machine_validated` artifact state, eligible parent request/proposal state, trusted validation evidence, human-review work-packet proof, and no open blocking validation findings.
+  - Review claiming now enforces reviewer qualification, independence, source lineage, claim-token one-time return semantics, safe idempotency keys, claim expiry, and replay without token re-display.
+  - Human-review submissions now reject forged authority fields, unsafe next-state/classroom-ready claims, unsafe review/finding text, conflicts, stale claims, expired claims, changed replay bodies, and invalid finding severity/type combinations.
+  - Review records now carry durable metadata: schema version, request ID, scope ID, source lineage, work-packet ID, reviewer actor ID, recommended-next-state evidence, and created timestamp.
+  - Review submission results now distinguish the lease-holder `submitted` transition from deterministic system `completed` state.
+  - Finding records now derive parent, creator, timestamp, blocking policy, and IDs centrally.
+  - Publication label derivation remains central-state based; critique/plan-verification evidence cannot become human review or publication authority.
+  - Adversarial Phase 8 review cycles found and drove fixes for missing review/finding lineage fields, expired-claim replay metadata, missing PII/student-record rejection in review finding text, missing durable review metadata, and direct `claimed -> completed` review-task collapse.
+  - Final Phase 8 adversarial re-review returned `PASS`.
+- Phase 9 MVP guardrail/e2e implementation:
+  - Added `tools/verify-no-leak-fixtures` and wired it into the workspace.
+  - Added `tools/lessonforge-e2e` and wired it into the workspace.
+  - Added machine-readable implementation manifest at `docs/implementation/mvp-test-manifest.json` with every required spec `012` row and required status.
+  - The no-leak fixture verifier scans checked-in MVP JSON string values for secret-like values, local paths, unsafe URLs, and concrete student PII/grade-record shapes while reporting only safe reason codes.
+  - The e2e tool validates the manifest, supports `--suite mvp` and `--case`, runs schema/fixture/dummy-runner/generation/static-validator smoke checks, reports every required matrix row, and negative-tests unavailable SSE/WebSocket command surfaces by scanning central API/core Rust source.
+  - Phase 9 adversarial review found and drove fixes for placeholder `LEAK-004`/`API-GATE-002` successes and incomplete leak-pattern coverage for Bearer/GitHub/AWS tokens, Windows/Unix local paths, and grade-record text.
+  - Final Phase 9 re-review found that the full `--suite mvp` e2e gate listed `LEAK-004` and `API-GATE-002` but only executed their negative transport checks in single-case mode.
+  - Added a full-suite regression assertion and changed `lessonforge-e2e -- --suite mvp` to execute the unavailable SSE/WebSocket command surface checks before reporting those rows with `negative_unavailable_verified`.
+  - Local Phase 9 gates passed after fixes:
+    - `cargo test -p verify-no-leak-fixtures`
+    - `cargo test -p lessonforge-e2e`
+    - `cargo run -p verify-no-leak-fixtures`
+    - `cargo run -p lessonforge-e2e -- --suite mvp`
+- Final local implementation gate passed:
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
+  - `cargo deny check --disable-fetch` passed with one existing duplicate `wit-bindgen` warning from the `tempfile` dependency graph.
+  - `cargo run -p verify-no-inference-core`
+  - `cargo run -p verify-schema-fixtures`
+  - `cargo run -p verify-no-leak-fixtures`
+  - `cargo run -p lessonforge-e2e -- --suite mvp`

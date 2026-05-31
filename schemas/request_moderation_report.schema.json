@@ -1,0 +1,25 @@
+{
+  "title": "Request Moderation Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "request_moderation_report_id",
+    "request_moderation_task_id",
+    "request_id",
+    "lease_id",
+    "moderation_kind",
+    "decision",
+    "category_flags",
+    "safe_reason_codes"
+  ],
+  "properties": {
+    "request_moderation_report_id": { "type": "string" },
+    "request_moderation_task_id": { "type": "string" },
+    "request_id": { "type": "string" },
+    "lease_id": { "type": "string" },
+    "moderation_kind": { "const": "dummy_fixture" },
+    "decision": { "const": "allow_mvp_planning" },
+    "category_flags": { "type": "array", "items": { "const": "none" } },
+    "safe_reason_codes": { "type": "array", "items": { "const": "moderation_allowed" } }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "request_moderation_report_id": "rmreport_energy_001",
+  "request_moderation_task_id": "rmtask_energy_001",
+  "request_id": "req_energy_001",
+  "lease_id": "lease_rmoderation_energy_001",
+  "moderation_kind": "dummy_fixture",
+  "decision": "allow_mvp_planning",
+  "category_flags": ["none"],
+  "safe_reason_codes": ["moderation_allowed"]
+}
