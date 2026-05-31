@@ -55,6 +55,29 @@ fn request_fixture_rejects_unknown_and_raw_unsafe_values_safely() -> Result<(), 
     };
     assert_eq!(path_error.code, "unsafe_text_value");
 
+    let mut repair_request = valid_request();
+    repair_request["auto_repair_preference"] = json!("request_bounded_code_repair");
+    validate_mvp_request(&repair_request)?;
+
+    let mut bad_repair_request = valid_request();
+    bad_repair_request["auto_repair_preference"] = json!("keep_fixing_until_it_works");
+    let repair_error = match validate_mvp_request(&bad_repair_request) {
+        Ok(()) => return Err("unsupported auto repair preference should reject".into()),
+        Err(error) => error,
+    };
+    assert_eq!(repair_error.code, "unsupported_mvp_value");
+
+    for value in [json!(null), json!(123), json!({}), json!([])] {
+        let mut malformed_repair_request = valid_request();
+        malformed_repair_request["auto_repair_preference"] = value;
+        let malformed_repair_error = match validate_mvp_request(&malformed_repair_request) {
+            Ok(()) => return Err("malformed auto repair preference should reject".into()),
+            Err(error) => error,
+        };
+        assert_eq!(malformed_repair_error.code, "invalid_shape");
+        assert_eq!(malformed_repair_error.field_path, "/auto_repair_preference");
+    }
+
     for unsafe_title in [
         "Read answers from /etc/passwd",
         "Use /private/var/tmp/cache.txt",
@@ -160,6 +183,26 @@ fn fixture_set_rejects_schema_and_example_drift() -> Result<(), Box<dyn Error>> 
         &temp.path().join("examples").join("mvp"),
     )?;
 
+    let mut request = valid_request();
+    request["auto_repair_preference"] = json!("request_bounded_code_repair");
+    fs::write(
+        temp.path()
+            .join("examples")
+            .join("mvp")
+            .join("request.valid.json"),
+        serde_json::to_string_pretty(&request)?,
+    )?;
+    let optional_repair_report = verify_fixture_set(temp.path())?;
+    assert_eq!(optional_repair_report.checked_fixture_count, 5);
+
+    copy_tree(
+        &workspace_root().join("schemas"),
+        &temp.path().join("schemas"),
+    )?;
+    copy_tree(
+        &workspace_root().join("examples").join("mvp"),
+        &temp.path().join("examples").join("mvp"),
+    )?;
     fs::write(
         temp.path().join("schemas").join("request.schema.json"),
         "{ not json",
@@ -215,7 +258,302 @@ fn fixture_set_rejects_schema_and_example_drift() -> Result<(), Box<dyn Error>> 
         Err(error) => error,
     };
     assert_eq!(extra_error.code, "unexpected_fixture_file");
+
+    let pattern_temp = tempfile::tempdir()?;
+    copy_tree(
+        &workspace_root().join("schemas"),
+        &pattern_temp.path().join("schemas"),
+    )?;
+    copy_tree(
+        &workspace_root().join("examples").join("mvp"),
+        &pattern_temp.path().join("examples").join("mvp"),
+    )?;
+    let mut schema: Value = serde_json::from_str(&fs::read_to_string(
+        pattern_temp.path().join("schemas/request.schema.json"),
+    )?)?;
+    schema["properties"]["title"]["pattern"] = json!("^unsupported-[0-9]+$");
+    fs::write(
+        pattern_temp.path().join("schemas/request.schema.json"),
+        serde_json::to_string_pretty(&schema)?,
+    )?;
+    let pattern_error = match verify_fixture_set(pattern_temp.path()) {
+        Ok(_) => return Err("unsupported schema pattern should reject".into()),
+        Err(error) => error,
+    };
+    assert_eq!(pattern_error.code, "unsupported_schema_pattern");
+
+    for malformed_pattern in [json!(123), Value::Null] {
+        let malformed_pattern_temp = tempfile::tempdir()?;
+        copy_tree(
+            &workspace_root().join("schemas"),
+            &malformed_pattern_temp.path().join("schemas"),
+        )?;
+        copy_tree(
+            &workspace_root().join("examples").join("mvp"),
+            &malformed_pattern_temp.path().join("examples").join("mvp"),
+        )?;
+        let mut schema: Value = serde_json::from_str(&fs::read_to_string(
+            malformed_pattern_temp
+                .path()
+                .join("schemas/request.schema.json"),
+        )?)?;
+        schema["properties"]["title"]["pattern"] = malformed_pattern;
+        fs::write(
+            malformed_pattern_temp
+                .path()
+                .join("schemas/request.schema.json"),
+            serde_json::to_string_pretty(&schema)?,
+        )?;
+        let malformed_pattern_error = match verify_fixture_set(malformed_pattern_temp.path()) {
+            Ok(_) => return Err("malformed schema pattern should reject".into()),
+            Err(error) => error,
+        };
+        assert_eq!(malformed_pattern_error.code, "schema_compile_failed");
+    }
+
+    for (field, bad_type) in [("title", "strnig"), ("auto_repair_preference", "strnig")] {
+        let unknown_type_temp = tempfile::tempdir()?;
+        copy_tree(
+            &workspace_root().join("schemas"),
+            &unknown_type_temp.path().join("schemas"),
+        )?;
+        copy_tree(
+            &workspace_root().join("examples").join("mvp"),
+            &unknown_type_temp.path().join("examples").join("mvp"),
+        )?;
+        let mut schema: Value = serde_json::from_str(&fs::read_to_string(
+            unknown_type_temp.path().join("schemas/request.schema.json"),
+        )?)?;
+        schema["properties"][field]["type"] = json!(bad_type);
+        fs::write(
+            unknown_type_temp.path().join("schemas/request.schema.json"),
+            serde_json::to_string_pretty(&schema)?,
+        )?;
+        let unknown_type_error = match verify_fixture_set(unknown_type_temp.path()) {
+            Ok(_) => return Err("unsupported schema type should reject".into()),
+            Err(error) => error,
+        };
+        assert_eq!(unknown_type_error.code, "schema_compile_failed");
+    }
+
+    let unconstrained_optional_temp = tempfile::tempdir()?;
+    copy_tree(
+        &workspace_root().join("schemas"),
+        &unconstrained_optional_temp.path().join("schemas"),
+    )?;
+    copy_tree(
+        &workspace_root().join("examples").join("mvp"),
+        &unconstrained_optional_temp
+            .path()
+            .join("examples")
+            .join("mvp"),
+    )?;
+    let mut schema: Value = serde_json::from_str(&fs::read_to_string(
+        unconstrained_optional_temp
+            .path()
+            .join("schemas/request.schema.json"),
+    )?)?;
+    schema["properties"]["auto_repair_preference"] = json!({});
+    fs::write(
+        unconstrained_optional_temp
+            .path()
+            .join("schemas/request.schema.json"),
+        serde_json::to_string_pretty(&schema)?,
+    )?;
+    let unconstrained_optional_error = match verify_fixture_set(unconstrained_optional_temp.path())
+    {
+        Ok(_) => return Err("unconstrained optional schema should reject".into()),
+        Err(error) => error,
+    };
+    assert_eq!(unconstrained_optional_error.code, "schema_compile_failed");
+
+    let optional_object_without_type =
+        fixture_error_after_schema_mutation("request.schema.json", |schema| {
+            schema["properties"]["auto_repair_preference"] =
+                json!({ "properties": { "x": { "type": "string" } } });
+        })?;
+    assert_eq!(optional_object_without_type, "schema_compile_failed");
+
+    let bad_any_of_temp = tempfile::tempdir()?;
+    copy_tree(
+        &workspace_root().join("schemas"),
+        &bad_any_of_temp.path().join("schemas"),
+    )?;
+    copy_tree(
+        &workspace_root().join("examples").join("mvp"),
+        &bad_any_of_temp.path().join("examples").join("mvp"),
+    )?;
+    let mut schema: Value = serde_json::from_str(&fs::read_to_string(
+        bad_any_of_temp
+            .path()
+            .join("schemas/proposed_task_graph.schema.json"),
+    )?)?;
+    schema["properties"]["proposed_tasks"]["items"]["anyOf"][0]["properties"]["task_type"]["type"] =
+        json!("strnig");
+    fs::write(
+        bad_any_of_temp
+            .path()
+            .join("schemas/proposed_task_graph.schema.json"),
+        serde_json::to_string_pretty(&schema)?,
+    )?;
+    let bad_any_of_error = match verify_fixture_set(bad_any_of_temp.path()) {
+        Ok(_) => return Err("unsupported schema type in anyOf branch should reject".into()),
+        Err(error) => error,
+    };
+    assert_eq!(bad_any_of_error.code, "schema_compile_failed");
+
+    let empty_any_of_branch_temp = tempfile::tempdir()?;
+    copy_tree(
+        &workspace_root().join("schemas"),
+        &empty_any_of_branch_temp.path().join("schemas"),
+    )?;
+    copy_tree(
+        &workspace_root().join("examples").join("mvp"),
+        &empty_any_of_branch_temp.path().join("examples").join("mvp"),
+    )?;
+    let mut schema: Value = serde_json::from_str(&fs::read_to_string(
+        empty_any_of_branch_temp
+            .path()
+            .join("schemas/proposed_task_graph.schema.json"),
+    )?)?;
+    schema["properties"]["proposed_tasks"]["items"]["anyOf"]
+        .as_array_mut()
+        .ok_or("expected proposed_tasks anyOf")?
+        .push(json!({}));
+    fs::write(
+        empty_any_of_branch_temp
+            .path()
+            .join("schemas/proposed_task_graph.schema.json"),
+        serde_json::to_string_pretty(&schema)?,
+    )?;
+    let empty_any_of_branch_error = match verify_fixture_set(empty_any_of_branch_temp.path()) {
+        Ok(_) => return Err("empty anyOf branch should reject".into()),
+        Err(error) => error,
+    };
+    assert_eq!(empty_any_of_branch_error.code, "schema_compile_failed");
+
+    let scalar_any_of_branch_temp = tempfile::tempdir()?;
+    copy_tree(
+        &workspace_root().join("schemas"),
+        &scalar_any_of_branch_temp.path().join("schemas"),
+    )?;
+    copy_tree(
+        &workspace_root().join("examples").join("mvp"),
+        &scalar_any_of_branch_temp
+            .path()
+            .join("examples")
+            .join("mvp"),
+    )?;
+    let mut schema: Value = serde_json::from_str(&fs::read_to_string(
+        scalar_any_of_branch_temp
+            .path()
+            .join("schemas/proposed_task_graph.schema.json"),
+    )?)?;
+    schema["properties"]["proposed_tasks"]["items"]["anyOf"]
+        .as_array_mut()
+        .ok_or("expected proposed_tasks anyOf")?
+        .push(json!(false));
+    fs::write(
+        scalar_any_of_branch_temp
+            .path()
+            .join("schemas/proposed_task_graph.schema.json"),
+        serde_json::to_string_pretty(&schema)?,
+    )?;
+    let scalar_any_of_branch_error = match verify_fixture_set(scalar_any_of_branch_temp.path()) {
+        Ok(_) => return Err("scalar anyOf branch should reject".into()),
+        Err(error) => error,
+    };
+    assert_eq!(scalar_any_of_branch_error.code, "schema_compile_failed");
+
+    for keyword in ["oneOf", "allOf", "$ref", "not", "format"] {
+        let code = fixture_error_after_schema_mutation("request.schema.json", |schema| {
+            schema[keyword] = json!("ignored_assertion");
+        })?;
+        assert_eq!(code, "schema_compile_failed");
+    }
+
+    type SchemaMutation = fn(&mut Value);
+    let open_object_schema_cases: &[(&str, SchemaMutation)] = &[
+        (
+            "object_schema_missing_additional_properties",
+            |schema: &mut Value| {
+                schema["properties"]["auto_repair_preference"] =
+                    json!({ "type": "object", "properties": { "x": { "type": "string" } } });
+            },
+        ),
+        (
+            "object_schema_allows_additional_properties",
+            |schema: &mut Value| {
+                schema["additionalProperties"] = json!(true);
+            },
+        ),
+    ];
+    for (case_name, mutate) in open_object_schema_cases {
+        let code = fixture_error_after_schema_mutation("request.schema.json", *mutate)?;
+        assert_eq!(code, "schema_compile_failed", "{case_name} should reject");
+    }
+
+    let malformed_keyword_cases: &[(&str, SchemaMutation)] = &[
+        ("required_string", |schema| {
+            schema["required"] = json!("title")
+        }),
+        ("additional_properties_string", |schema| {
+            schema["additionalProperties"] = json!("false");
+        }),
+        ("properties_array", |schema| {
+            schema["properties"] = json!([])
+        }),
+        ("items_string", |schema| {
+            schema["properties"]["desired_artifacts"]["items"] = json!("string");
+        }),
+        ("min_items_string", |schema| {
+            schema["properties"]["desired_artifacts"]["minItems"] = json!("1");
+        }),
+        ("max_items_string", |schema| {
+            schema["properties"]["constraints"]["maxItems"] = json!("12");
+        }),
+        ("min_length_string", |schema| {
+            schema["properties"]["title"]["minLength"] = json!("1");
+        }),
+        ("max_length_string", |schema| {
+            schema["properties"]["title"]["maxLength"] = json!("120");
+        }),
+        ("unique_items_string", |schema| {
+            schema["properties"]["desired_artifacts"]["uniqueItems"] = json!("true");
+        }),
+    ];
+    for (_case_name, mutate) in malformed_keyword_cases {
+        let code = fixture_error_after_schema_mutation("request.schema.json", *mutate)?;
+        assert_eq!(code, "schema_compile_failed");
+    }
     Ok(())
+}
+
+fn fixture_error_after_schema_mutation<F>(
+    schema_file: &str,
+    mutate: F,
+) -> Result<&'static str, Box<dyn Error>>
+where
+    F: FnOnce(&mut Value),
+{
+    let temp = tempfile::tempdir()?;
+    copy_tree(
+        &workspace_root().join("schemas"),
+        &temp.path().join("schemas"),
+    )?;
+    copy_tree(
+        &workspace_root().join("examples").join("mvp"),
+        &temp.path().join("examples").join("mvp"),
+    )?;
+    let schema_path = temp.path().join("schemas").join(schema_file);
+    let mut schema: Value = serde_json::from_str(&fs::read_to_string(&schema_path)?)?;
+    mutate(&mut schema);
+    fs::write(schema_path, serde_json::to_string_pretty(&schema)?)?;
+    let error = match verify_fixture_set(temp.path()) {
+        Ok(_) => return Err("schema mutation should reject".into()),
+        Err(error) => error,
+    };
+    Ok(error.code)
 }
 
 fn workspace_root() -> std::path::PathBuf {

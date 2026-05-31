@@ -724,10 +724,39 @@ fn contains_student_pii_marker(value: &str, lower: &str) -> bool {
         || lower.contains("guardian")
         || lower.contains("alice")
         || lower.contains("bob")
-        || lower.contains('%')
+        || contains_percent_grade_marker(value, lower)
         || contains_grade_fraction(value)
         || contains_titlecase_name_pair(value)
         || has_phone_like_digit_run(value)
+}
+
+fn contains_percent_grade_marker(value: &str, lower: &str) -> bool {
+    let has_grade_context = lower.contains("score")
+        || lower.contains("scored")
+        || lower.contains("grade")
+        || lower.contains("attendance");
+    has_grade_context && contains_digit_percent_pair(value)
+}
+
+fn contains_digit_percent_pair(value: &str) -> bool {
+    let chars = value.chars().collect::<Vec<_>>();
+    for (index, character) in chars.iter().enumerate() {
+        if *character == '%' {
+            let previous_digit = chars[..index]
+                .iter()
+                .rev()
+                .find(|candidate| !candidate.is_ascii_whitespace())
+                .is_some_and(|candidate| candidate.is_ascii_digit());
+            let next_digit = chars[index + 1..]
+                .iter()
+                .find(|candidate| !candidate.is_ascii_whitespace())
+                .is_some_and(|candidate| candidate.is_ascii_digit());
+            if previous_digit || next_digit {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn has_phone_like_digit_run(value: &str) -> bool {

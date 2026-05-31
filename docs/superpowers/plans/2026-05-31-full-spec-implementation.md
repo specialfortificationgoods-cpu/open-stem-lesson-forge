@@ -18,7 +18,10 @@
 - `deny.toml`: dependency/license/advisory policy for the final gate.
 - `crates/lessonforge_core/src/ids.rs`: typed IDs and prefix validation.
 - `crates/lessonforge_core/src/state.rs`: shared state enums and transitions from spec `005`.
-- `crates/lessonforge_core/src/policy.rs`: deterministic policy decisions from specs `006`, `007`, `011`, `014`.
+- `crates/lessonforge_core/src/moderation.rs`: deterministic request moderation policy from spec `006`.
+- `crates/lessonforge_core/src/planning.rs`: deterministic planning task records from specs `006` and `007`.
+- `crates/lessonforge_core/src/graph.rs`: proposed graph policy, verification, and promotion from spec `007`.
+- `crates/lessonforge_core/src/review.rs`: critique, human review, and publication policy from spec `011`.
 - `crates/lessonforge_core/src/error.rs`: shared typed errors.
 - `crates/lessonforge_core/src/code_repair.rs`: existing spec `014` code critique/repair contracts.
 - `crates/lessonforge_schema`: schema validation crate and fixture checks.

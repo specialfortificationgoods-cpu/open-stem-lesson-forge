@@ -219,9 +219,13 @@ fn scan_workspace(root: &Path) -> Result<Vec<Finding>, String> {
 
     for relative in OPTIONAL_CENTRAL_DATA_PATHS {
         let path = root.join(relative);
-        if path.exists() {
-            scan_path(&path, &mut findings)?;
-            scan_central_data_prompt_markers(&path, &mut findings)?;
+        match fs::symlink_metadata(&path) {
+            Ok(_) => {
+                scan_path(&path, &mut findings)?;
+                scan_central_data_prompt_markers(&path, &mut findings)?;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.to_string()),
         }
     }
 
@@ -478,7 +482,13 @@ fn scan_central_data_prompt_markers(
     path: &Path,
     findings: &mut Vec<Finding>,
 ) -> Result<(), String> {
-    let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
+    let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "symlink not allowed in no-inference scan: {}",
+            path.display()
+        ));
+    }
     if metadata.is_dir() {
         for entry in fs::read_dir(path).map_err(|error| error.to_string())? {
             let entry = entry.map_err(|error| error.to_string())?;
@@ -550,7 +560,13 @@ fn is_path_dependency_package(package: &Package) -> bool {
 }
 
 fn scan_path(path: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
-    let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
+    let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "symlink not allowed in no-inference scan: {}",
+            path.display()
+        ));
+    }
     if metadata.is_dir() {
         for entry in fs::read_dir(path).map_err(|error| error.to_string())? {
             let entry = entry.map_err(|error| error.to_string())?;
@@ -639,8 +655,10 @@ fn scan_package_data_prompt_paths(
 ) -> Result<(), String> {
     for relative in ["migrations", "schema", "schemas"] {
         let path = package_root.join(relative);
-        if path.exists() {
-            scan_central_data_prompt_markers(&path, findings)?;
+        match fs::symlink_metadata(&path) {
+            Ok(_) => scan_central_data_prompt_markers(&path, findings)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.to_string()),
         }
     }
     Ok(())
@@ -676,4 +694,54 @@ fn normalize_marker_input(value: &str) -> String {
         .flat_map(char::to_lowercase)
         .filter(char::is_ascii_alphanumeric)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::error::Error;
+
+    #[cfg(unix)]
+    #[test]
+    fn scan_path_rejects_symlinked_files_or_directories() -> Result<(), Box<dyn Error>> {
+        let temp = tempfile::tempdir()?;
+        let outside = tempfile::tempdir()?;
+        fs::write(outside.path().join("llm.rs"), "call_llm()")?;
+        fs::create_dir(temp.path().join("scan"))?;
+        std::os::unix::fs::symlink(
+            outside.path().join("llm.rs"),
+            temp.path().join("scan").join("linked.rs"),
+        )?;
+        std::os::unix::fs::symlink(outside.path(), temp.path().join("scan").join("linked_dir"))?;
+
+        let mut findings = Vec::new();
+        let error = match scan_path(&temp.path().join("scan"), &mut findings) {
+            Ok(()) => return Err("symlinked scan path should reject".into()),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("symlink not allowed in no-inference scan"));
+        assert!(findings.is_empty());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn scan_path_rejects_symlinked_directory_when_it_is_first_seen() -> Result<(), Box<dyn Error>> {
+        let outside = tempfile::tempdir()?;
+        fs::write(outside.path().join("llm.rs"), "call_llm()")?;
+        let temp = tempfile::tempdir()?;
+        let linked_dir = temp.path().join("linked_dir");
+        std::os::unix::fs::symlink(outside.path(), &linked_dir)?;
+
+        let mut findings = Vec::new();
+        let error = match scan_path(&linked_dir, &mut findings) {
+            Ok(()) => return Err("symlinked scan path should reject".into()),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("symlink not allowed in no-inference scan"));
+        assert!(findings.is_empty());
+        Ok(())
+    }
 }

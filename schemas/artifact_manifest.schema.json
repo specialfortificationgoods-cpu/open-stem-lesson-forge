@@ -1,5 +1,6 @@
 {
   "title": "Artifact Manifest",
+  "description": "Closed MVP artifact fixture schema for the conservation-of-energy vertical slice; intentionally narrower than the future production artifact-manifest envelope.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -29,7 +30,12 @@
     "license": { "const": "CC-BY-4.0" },
     "status_claim": { "const": "draft_generated" },
     "ai_assisted": { "const": true },
-    "contents": { "type": "array", "items": { "type": "string" } },
+    "contents": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": { "type": "string", "maxLength": 120 }
+    },
     "known_limitations": {
       "type": "array",
       "minItems": 1,

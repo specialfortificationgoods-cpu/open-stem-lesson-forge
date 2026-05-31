@@ -31,6 +31,7 @@ fn valid_mvp_request_creates_request_and_moderation_task_only() -> Result<(), Bo
     );
     assert!(outcome.planning_task.is_none());
     assert_eq!(outcome.request.desired_artifacts.len(), 4);
+    assert!(outcome.request.forbidden_content_acknowledged);
     Ok(())
 }
 
@@ -72,6 +73,29 @@ fn accepted_moderation_report_creates_mechanical_planning_task() -> Result<(), B
             .forbidden_outputs
             .contains(&"arbitrary_prompt")
     );
+    Ok(())
+}
+
+#[test]
+fn quarantine_moderation_accepts_general_quarantine_reason() -> Result<(), Box<dyn Error>> {
+    let intake = accept_request_intake(valid_request_payload(), intake_context()?)?;
+    let context = moderation_context(&intake.request.request_id, &intake.moderation_task.task_id)?;
+    let report = ModerationReportSubmission {
+        request_moderation_report_id: RequestModerationReportId::try_from("rmreport_energy_001")?,
+        request_moderation_task_id: intake.moderation_task.task_id.clone(),
+        request_id: intake.request.request_id.clone(),
+        lease_id: LeaseId::try_from("lease_rmoderation_energy_001")?,
+        claim_token: "moderation-claim-token".to_owned(),
+        moderation_kind: ModerationKind::DummyFixture,
+        decision: ModerationDecision::QuarantineRequest,
+        category_flags: vec![ModerationCategory::Privacy],
+        safe_reason_codes: vec![ModerationSafeReason::ModerationQuarantineReviewNeeded],
+    };
+
+    let outcome = apply_moderation_report(&intake.request, context, report)?;
+
+    assert_eq!(outcome.request_state, RequestState::Quarantined);
+    assert!(outcome.planning_task.is_none());
     Ok(())
 }
 
@@ -128,6 +152,49 @@ fn unsupported_mvp_values_and_limits_reject_before_persistence() -> Result<(), B
 }
 
 #[test]
+fn unsupported_auto_repair_preference_rejects_as_unsupported_mvp_value()
+-> Result<(), Box<dyn Error>> {
+    let mut payload = valid_request_payload();
+    payload["auto_repair_preference"] = json!("keep_fixing");
+
+    let error = match accept_request_intake(payload, intake_context()?) {
+        Ok(_) => return Err("unsupported auto_repair_preference should reject".into()),
+        Err(error) => error,
+    };
+
+    match error {
+        lessonforge_core::request::RequestWorkflowError::Rejected { reason, field_path } => {
+            assert_eq!(reason, IntakeRejectionReason::UnsupportedMvpValue);
+            assert_eq!(field_path, "/auto_repair_preference");
+        }
+        _ => return Err("expected request intake rejection".into()),
+    }
+    Ok(())
+}
+
+#[test]
+fn malformed_auto_repair_preference_rejects_before_defaulting() -> Result<(), Box<dyn Error>> {
+    for value in [json!(123), json!(null), json!({})] {
+        let mut payload = valid_request_payload();
+        payload["auto_repair_preference"] = value;
+
+        let error = match accept_request_intake(payload, intake_context()?) {
+            Ok(_) => return Err("malformed auto_repair_preference should reject".into()),
+            Err(error) => error,
+        };
+
+        match error {
+            lessonforge_core::request::RequestWorkflowError::Rejected { reason, field_path } => {
+                assert_eq!(reason, IntakeRejectionReason::InvalidField);
+                assert_eq!(field_path, "/auto_repair_preference");
+            }
+            _ => return Err("expected request intake rejection".into()),
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn forged_or_stale_moderation_evidence_cannot_unlock_planning() -> Result<(), Box<dyn Error>> {
     let intake = accept_request_intake(valid_request_payload(), intake_context()?)?;
     let context = moderation_context(&intake.request.request_id, &intake.moderation_task.task_id)?;
@@ -177,6 +244,53 @@ fn pii_secret_url_and_attachment_inputs_reject_without_persisting_raw_values()
         ("constraints", json!(["api key sk-proj-example"])),
         ("constraints", json!(["provider endpoint is forbidden"])),
         ("constraints", json!(["call me at 5551234567"])),
+        ("constraints", json!(["call me at 15551234567"])),
+        ("constraints", json!(["phone 555-123-4567"])),
+        ("constraints", json!(["phone 15551234567"])),
+        ("constraints", json!(["phone 555-1234"])),
+        ("constraints", json!(["phone is 555-1234"])),
+        ("constraints", json!(["contact (555) 123-4567"])),
+        ("constraints", json!(["sms 555 123 4567"])),
+        ("constraints", json!(["call me 555 1234"])),
+        ("constraints", json!(["contact 555-1234"])),
+        ("constraints", json!(["call 555-1234"])),
+        ("constraints", json!(["text 555-1234"])),
+        ("constraints", json!(["555-1234 mobile"])),
+        ("constraints", json!(["5551234 phone"])),
+        ("constraints", json!(["contact me at 555-1234"])),
+        ("constraints", json!(["contact me at 15551234567"])),
+        ("constraints", json!(["phone +1 (555) 123-4567"])),
+        ("constraints", json!(["tel:+1-555-123-4567"])),
+        ("constraints", json!(["tel:555-1234"])),
+        ("constraints", json!(["contact 555-123-4567 ext 89"])),
+        ("constraints", json!(["555-123-4567 x123"])),
+        ("constraints", json!(["(555) 123-4567 x89"])),
+        ("constraints", json!(["555-123-4567x123"])),
+        ("constraints", json!(["5551234567x123"])),
+        ("constraints", json!(["555-123-4567ext123"])),
+        ("constraints", json!(["555-123-4567ext.123"])),
+        (
+            "constraints",
+            json!(["extension question, then call 555-123-4567"]),
+        ),
+        ("constraints", json!(["contact +1 555 123 4567 ext 12345"])),
+        ("constraints", json!(["+44 20 7946 0958"])),
+        ("constraints", json!(["+442079460958"])),
+        ("constraints", json!(["+49-30-1234-5678 x123"])),
+        ("constraints", json!(["phone 44 20 7946 0958"])),
+        ("constraints", json!(["phone 442079460958"])),
+        ("constraints", json!(["mobile 49 30 1234 5678"])),
+        ("constraints", json!(["mobile is 44 20 7946 0958"])),
+        ("constraints", json!(["mobile 4420 7946 0958"])),
+        ("constraints", json!(["call me at 44 20 7946 0958"])),
+        ("constraints", json!(["contact 44 20 7946 0958"])),
+        ("constraints", json!(["call 44 20 7946 0958"])),
+        ("constraints", json!(["text 44 20 7946 0958"])),
+        ("constraints", json!(["contact me at 44 20 7946 0958"])),
+        ("constraints", json!(["tel:44 20 7946 0958"])),
+        ("constraints", json!(["contact: 44 20 7946 0958"])),
+        ("constraints", json!(["tel:+15551234567"])),
+        ("constraints", json!(["student identifier 123456789012345"])),
         ("constraints", json!(["see https://example.test/rubric"])),
         ("attachments", json!(["rubric.pdf"])),
     ] {
@@ -197,6 +311,72 @@ fn pii_secret_url_and_attachment_inputs_reject_without_persisting_raw_values()
         assert!(!rendered.contains("sk-proj-example"));
         assert!(!rendered.contains("https://example.test"));
     }
+    Ok(())
+}
+
+#[test]
+fn ordinary_stem_numeric_text_is_not_phone_like_pii() -> Result<(), Box<dyn Error>> {
+    for text in [
+        "Use a cell model with labels 1 2 3 4 5 6 7",
+        "Textbook examples 1 2 3 4 5 6 7",
+        "Include an extension question with labels 1 2 3 4 5 6 7",
+        "Contact force activity: cases 1 2 3 4 5 6 7",
+        "Use 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 in arithmetic practice",
+        "Use ISBN 9780131103627 for a source note",
+        "Use EAN 4006381333931 as an example identifier",
+        "Use a cell phone accelerometer and cite ISBN 9780131103627",
+        "Use a cell phone accelerometer and cite ISBN 978-0-13-110362-7",
+        "Use a cell phone sensor example with EAN 4006381333931",
+        "Use a cell phone sensor example with EAN 400 638 1333931",
+        "Use cell phone 978-0-13-110362-7 as an ISBN example",
+        "Use cell phone 400 638 1333931 as an EAN example",
+        "Compute 1+23456789 using mental math",
+    ] {
+        let mut payload = valid_request_payload();
+        payload["constraints"] = json!([text]);
+
+        let outcome = accept_request_intake(payload, intake_context()?)?;
+
+        assert_eq!(outcome.request.state, RequestState::ModerationPending);
+    }
+    Ok(())
+}
+
+#[test]
+fn unknown_request_field_rejection_does_not_echo_raw_field_name() -> Result<(), Box<dyn Error>> {
+    let mut payload = valid_request_payload();
+    payload["sk-secret-/Users/alice"] = json!("ignored");
+
+    let error = accept_request_intake(payload, intake_context()?).err();
+
+    assert!(matches!(
+        error,
+        Some(lessonforge_core::request::RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::UnknownField,
+            ..
+        })
+    ));
+    let rendered = format!("{error:?}");
+    assert!(rendered.contains("/unknown_field"));
+    assert!(!rendered.contains("sk-secret-/Users/alice"));
+    Ok(())
+}
+
+#[test]
+fn moderation_report_rejects_duplicate_category_flags() -> Result<(), Box<dyn Error>> {
+    let report = ModerationReportSubmission {
+        request_moderation_report_id: RequestModerationReportId::try_from("rmreport_energy_001")?,
+        request_moderation_task_id: RequestModerationTaskId::try_from("rmtask_energy_001")?,
+        request_id: RequestId::try_from("req_energy_001")?,
+        lease_id: LeaseId::try_from("lease_rmoderation_energy_001")?,
+        claim_token: "moderation-claim-token".to_owned(),
+        moderation_kind: ModerationKind::DummyFixture,
+        decision: ModerationDecision::RejectRequest,
+        category_flags: vec![ModerationCategory::Privacy, ModerationCategory::Privacy],
+        safe_reason_codes: vec![ModerationSafeReason::ModerationRejectedPrivacy],
+    };
+
+    assert!(!report.is_consistent());
     Ok(())
 }
 
@@ -244,7 +424,18 @@ fn intake_rejections_include_safe_field_paths() -> Result<(), Box<dyn Error>> {
     else {
         return Err("unknown field should reject with field path".into());
     };
-    assert_eq!(field_path, "/attachments");
+    assert_eq!(field_path, "/unknown_field");
+
+    let mut payload = valid_request_payload();
+    payload["constraints"] = json!(["email teacher@example.com"]);
+    let Err(lessonforge_core::request::RequestWorkflowError::Rejected {
+        reason: IntakeRejectionReason::UnsafeText,
+        field_path,
+    }) = accept_request_intake(payload, intake_context()?)
+    else {
+        return Err("unsafe constraint should reject with item field path".into());
+    };
+    assert_eq!(field_path, "/constraints/0");
     Ok(())
 }
 

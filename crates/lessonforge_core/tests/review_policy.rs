@@ -501,6 +501,7 @@ fn finding_policy_rejects_invalid_severity_unsafe_text_and_laundered_blocking_fl
         "Parent phone 555-123-4567",
         "Charlie Chen: 90%",
         "Charlie Li: 90/100",
+        "Quiz score % 85",
     ] {
         let mut unsafe_path = ReviewSubmission::approved_no_findings();
         unsafe_path.findings = vec![FindingInput {
@@ -524,6 +525,25 @@ fn finding_policy_rejects_invalid_severity_unsafe_text_and_laundered_blocking_fl
             "unsafe_submitted_review_text"
         );
     }
+
+    let mut safe_percentage = ReviewSubmission::approved_no_findings();
+    safe_percentage.findings = vec![FindingInput {
+        severity: FindingSeverity::Minor,
+        finding_type: FindingType::OtherSafe,
+        safe_location: "worksheet".to_owned(),
+        safe_message: "Efficiency is 85% in the example".to_owned(),
+        submitted_blocking: None,
+        submitted_authority_fields: Vec::new(),
+    }];
+    submit_review(
+        create_review_task(review_context()?)?,
+        review_claim_context(qualified_reviewer(
+            "actor_reviewer_001",
+            "operator_reviewer",
+            "conflict_reviewer",
+        )?)?,
+        safe_percentage,
+    )?;
     Ok(())
 }
 

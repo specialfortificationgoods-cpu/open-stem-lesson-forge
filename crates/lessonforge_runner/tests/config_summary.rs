@@ -36,6 +36,10 @@ fn unsafe_origins_and_provider_backed_modes_are_rejected_safely() {
         dummy_planner_config_with_base("https://user:pass@lessonforge.example"),
         dummy_planner_config_with_base("https://lessonforge.example/api"),
         dummy_planner_config_with_base("https://ollama.local:11434"),
+        dummy_planner_config_with_base("http://127.0.0.1:11434"),
+        dummy_planner_config_with_base("http://[::1]:11434"),
+        dummy_planner_config_with_base("http://127.0.0.1:011434"),
+        dummy_planner_config_with_base("http://[::1]:011434"),
     ] {
         let (code, rendered) = config_error_code_and_debug(&config);
         assert_eq!(code, "unsafe_central_api_origin");
@@ -67,6 +71,34 @@ fn non_loopback_https_origins_require_complete_pinned_transport() -> Result<(), 
     let mut empty_pin = dummy_planner_config_with_base("https://lessonforge.example");
     empty_pin.transport.tls.trust_policy = lessonforge_runner::TlsTrustPolicy::PinnedCa;
     assert_eq!(config_error_code(&empty_pin), "unsafe_central_api_origin");
+
+    let mut loopback_pinned_ca = dummy_planner_config_with_base("http://127.0.0.1:8080");
+    loopback_pinned_ca.transport.tls.trust_policy = lessonforge_runner::TlsTrustPolicy::PinnedCa;
+    assert_eq!(
+        config_error_code(&loopback_pinned_ca),
+        "unsafe_central_api_origin"
+    );
+    loopback_pinned_ca.transport.tls.pinned_ca_pem_path = ca_path.display().to_string();
+    loopback_pinned_ca.transport.tls.expected_server_name = "127.0.0.1".to_owned();
+    assert_eq!(
+        config_error_code(&loopback_pinned_ca),
+        "unsafe_central_api_origin"
+    );
+
+    let mut loopback_pinned_spki = dummy_planner_config_with_base("http://127.0.0.1:8080");
+    loopback_pinned_spki.transport.tls.trust_policy =
+        lessonforge_runner::TlsTrustPolicy::PinnedSpki;
+    assert_eq!(
+        config_error_code(&loopback_pinned_spki),
+        "unsafe_central_api_origin"
+    );
+    loopback_pinned_spki.transport.tls.pinned_spki_sha256 =
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_owned();
+    loopback_pinned_spki.transport.tls.expected_server_name = "127.0.0.1".to_owned();
+    assert_eq!(
+        config_error_code(&loopback_pinned_spki),
+        "unsafe_central_api_origin"
+    );
 
     let mut wrong_name = empty_pin.clone();
     wrong_name.transport.tls.pinned_ca_pem_path = ca_path.display().to_string();

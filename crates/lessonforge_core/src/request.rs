@@ -42,6 +42,7 @@ pub enum IntakeRejectionReason {
     MissingRequiredField,
     UnknownField,
     InvalidField,
+    UnsupportedMvpValue,
     UnsafeText,
 }
 
@@ -54,6 +55,8 @@ pub enum RequestWorkflowError {
     },
     #[error("request moderation rejected: {reason}")]
     ModerationRejected { reason: &'static str },
+    #[error("request workflow conflict: {reason}")]
+    Conflict { reason: &'static str },
     #[error(transparent)]
     Transition(#[from] crate::error::TransitionError),
 }
@@ -86,6 +89,7 @@ pub struct StoredRequest {
     pub constraints: Vec<String>,
     pub license_preference: String,
     pub visibility: StoredRequestVisibility,
+    pub forbidden_content_acknowledged: bool,
     pub auto_repair_preference: AutoRepairPreference,
 }
 
@@ -157,18 +161,21 @@ pub fn accept_request_intake(
         optional_auto_repair_preference(object, context.default_auto_repair_preference)?;
     require_true(object, "forbidden_content_acknowledged")?;
 
-    for value in [
-        &title,
-        &subject,
-        &topic,
-        &age_range,
-        &language,
-        &license_preference,
+    for (value, field_path) in [
+        (&title, "/title"),
+        (&subject, "/subject"),
+        (&topic, "/topic"),
+        (&age_range, "/age_range"),
+        (&language, "/language"),
+        (&license_preference, "/license_preference"),
     ] {
-        reject_unsafe_text(value)?;
+        reject_unsafe_text(value, field_path)?;
     }
-    for value in desired_artifacts.iter().chain(constraints.iter()) {
-        reject_unsafe_text(value)?;
+    for (index, value) in desired_artifacts.iter().enumerate() {
+        reject_unsafe_text(value, &format!("/desired_artifacts/{index}"))?;
+    }
+    for (index, value) in constraints.iter().enumerate() {
+        reject_unsafe_text(value, &format!("/constraints/{index}"))?;
     }
 
     let request_state =
@@ -189,6 +196,7 @@ pub fn accept_request_intake(
         constraints,
         license_preference,
         visibility,
+        forbidden_content_acknowledged: true,
         auto_repair_preference,
     };
     let moderation_task = RequestModerationTaskRecord {
@@ -302,10 +310,10 @@ fn reject_unknown_fields<'a>(
     ]
     .into_iter()
     .collect::<BTreeSet<_>>();
-    if let Some(key) = keys.find(|key| !allowed.contains(key)) {
+    if keys.find(|key| !allowed.contains(key)).is_some() {
         return Err(RequestWorkflowError::Rejected {
             reason: IntakeRejectionReason::UnknownField,
-            field_path: format!("/{key}"),
+            field_path: "/unknown_field".to_owned(),
         });
     }
     Ok(())
@@ -545,10 +553,18 @@ fn optional_auto_repair_preference(
     object: &serde_json::Map<String, Value>,
     default: AutoRepairPreference,
 ) -> Result<AutoRepairPreference, RequestWorkflowError> {
-    match object.get("auto_repair_preference").and_then(Value::as_str) {
+    match object.get("auto_repair_preference") {
         None => Ok(default),
-        Some("no_automated_repair") => Ok(AutoRepairPreference::NoAutomatedRepair),
-        Some("request_bounded_code_repair") => Ok(AutoRepairPreference::RequestBoundedCodeRepair),
+        Some(Value::String(value)) if value == "no_automated_repair" => {
+            Ok(AutoRepairPreference::NoAutomatedRepair)
+        }
+        Some(Value::String(value)) if value == "request_bounded_code_repair" => {
+            Ok(AutoRepairPreference::RequestBoundedCodeRepair)
+        }
+        Some(Value::String(_)) => Err(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::UnsupportedMvpValue,
+            field_path: "/auto_repair_preference".to_owned(),
+        }),
         Some(_) => Err(RequestWorkflowError::Rejected {
             reason: IntakeRejectionReason::InvalidField,
             field_path: "/auto_repair_preference".to_owned(),
@@ -556,7 +572,7 @@ fn optional_auto_repair_preference(
     }
 }
 
-fn reject_unsafe_text(value: &str) -> Result<(), RequestWorkflowError> {
+fn reject_unsafe_text(value: &str, field_path: &str) -> Result<(), RequestWorkflowError> {
     let lowercase = value.to_ascii_lowercase();
     let looks_like_email = value.contains('@') && value.contains('.');
     let looks_like_url = lowercase.contains("://")
@@ -572,17 +588,232 @@ fn reject_unsafe_text(value: &str) -> Result<(), RequestWorkflowError> {
         || lowercase.contains("secret")
         || lowercase.contains("provider endpoint")
         || lowercase.contains("provider key");
-    let looks_like_long_digit_id = value.chars().filter(char::is_ascii_digit).count() >= 10;
+    // Request text is free-form STEM prose; reject only very long digit runs here to
+    // avoid treating ordinary numeric examples as identifiers.
+    let looks_like_long_digit_id = has_long_digit_run(value, 15);
+    let looks_like_phone = has_phone_like_number(value, &lowercase);
     if looks_like_email
         || looks_like_url
         || looks_like_local_path
         || looks_like_secret
         || looks_like_long_digit_id
+        || looks_like_phone
     {
         return Err(RequestWorkflowError::Rejected {
             reason: IntakeRejectionReason::UnsafeText,
-            field_path: "/request_text".to_owned(),
+            field_path: field_path.to_owned(),
         });
     }
     Ok(())
+}
+
+fn has_phone_like_number(value: &str, lowercase: &str) -> bool {
+    contains_us_phone_candidate(value)
+        || contains_international_phone_candidate(value)
+        || contains_contextual_phone_candidate(value, lowercase)
+}
+
+fn contains_us_phone_candidate(value: &str) -> bool {
+    for (start, character) in value.char_indices() {
+        if !character.is_ascii_digit() && character != '(' {
+            continue;
+        }
+        if previous_char(value, start).is_some_and(|previous| previous.is_ascii_digit()) {
+            continue;
+        }
+        let candidate = &value[start..];
+        let end = phone_candidate_end(candidate);
+        if end > 0 && phone_base_is_us_shaped(&candidate[..end]) {
+            return true;
+        }
+    }
+    false
+}
+
+fn contains_international_phone_candidate(value: &str) -> bool {
+    value.match_indices('+').any(|(plus_index, _)| {
+        if previous_char(value, plus_index).is_some_and(|previous| previous.is_ascii_digit()) {
+            return false;
+        }
+        let candidate = &value[plus_index + 1..];
+        let end = phone_candidate_end(candidate);
+        end > 0 && phone_base_is_international_shaped(&candidate[..end])
+    })
+}
+
+fn contains_contextual_phone_candidate(value: &str, lowercase: &str) -> bool {
+    for (start, character) in value.char_indices() {
+        if !character.is_ascii_digit() && character != '(' {
+            continue;
+        }
+        if previous_char(value, start).is_some_and(|previous| previous.is_ascii_digit()) {
+            continue;
+        }
+        let candidate = &value[start..];
+        let end = phone_candidate_end(candidate);
+        if end == 0 {
+            continue;
+        }
+        let context_before = phone_context_before_candidate(lowercase, start);
+        let context_after = phone_context_after_candidate(lowercase, start + end);
+        if !context_before && !context_after {
+            continue;
+        }
+        let base = &candidate[..end];
+        if phone_base_is_contextual_local_shaped(base)
+            || phone_base_is_contextual_international_shaped(base)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn phone_base_is_us_shaped(base: &str) -> bool {
+    let digit_count = base.chars().filter(char::is_ascii_digit).count();
+    let digit_group_lengths = base
+        .split(|character: char| !character.is_ascii_digit())
+        .filter(|group| !group.is_empty())
+        .map(str::len)
+        .collect::<Vec<_>>();
+    (digit_count == 10
+        && (has_long_digit_run(base, 10) || matches!(digit_group_lengths.as_slice(), [3, 3, 4])))
+        || (digit_count == 11
+            && (matches!(digit_group_lengths.as_slice(), [1, 3, 3, 4])
+                || (digit_group_lengths.as_slice() == [11] && base.starts_with('1'))))
+}
+
+fn phone_base_is_international_shaped(base: &str) -> bool {
+    let digit_count = base.chars().filter(char::is_ascii_digit).count();
+    if !(8..=15).contains(&digit_count) {
+        return false;
+    }
+    let digit_group_lengths = base
+        .split(|character: char| !character.is_ascii_digit())
+        .filter(|group| !group.is_empty())
+        .map(str::len)
+        .collect::<Vec<_>>();
+    digit_group_lengths.len() == 1
+        || (digit_group_lengths.len() >= 3 && (1..=3).contains(&digit_group_lengths[0]))
+}
+
+fn phone_base_is_contextual_local_shaped(base: &str) -> bool {
+    let digit_group_lengths = digit_group_lengths(base);
+    matches!(digit_group_lengths.as_slice(), [7] | [3, 4])
+}
+
+fn phone_base_is_contextual_international_shaped(base: &str) -> bool {
+    let digit_count = base.chars().filter(char::is_ascii_digit).count();
+    if !(8..=15).contains(&digit_count) {
+        return false;
+    }
+    let digit_group_lengths = digit_group_lengths(base);
+    digit_group_lengths.len() == 1
+        || digit_group_lengths.len() >= 3
+        || matches!(digit_group_lengths.as_slice(), [4, 4, 4])
+}
+
+fn digit_group_lengths(base: &str) -> Vec<usize> {
+    base.split(|character: char| !character.is_ascii_digit())
+        .filter(|group| !group.is_empty())
+        .map(str::len)
+        .collect()
+}
+
+fn is_phone_base_character(character: char) -> bool {
+    character.is_ascii_digit() || matches!(character, ' ' | '-' | '.' | '(' | ')')
+}
+
+fn phone_candidate_end(candidate: &str) -> usize {
+    candidate
+        .char_indices()
+        .find_map(|(index, character)| (!is_phone_base_character(character)).then_some(index))
+        .unwrap_or(candidate.len())
+}
+
+fn previous_char(value: &str, index: usize) -> Option<char> {
+    value[..index].chars().next_back()
+}
+
+fn phone_context_before_candidate(lowercase: &str, candidate_start: usize) -> bool {
+    let prefix = lowercase[..candidate_start].trim_end_matches(|character: char| {
+        character.is_ascii_whitespace() || matches!(character, ':' | '-' | '.' | '(')
+    });
+    let mut words = prefix
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>();
+    while words
+        .last()
+        .is_some_and(|word| matches!(*word, "is" | "at"))
+    {
+        words.pop();
+    }
+    let contact_suffixes: &[&[&str]] = &[
+        &["phone"],
+        &["phone", "number"],
+        &["mobile"],
+        &["mobile", "number"],
+        &["cell", "phone", "number"],
+        &["text"],
+        &["text", "me"],
+        &["text", "me", "at"],
+        &["sms"],
+        &["sms", "at"],
+        &["call"],
+        &["call", "me"],
+        &["call", "me", "at"],
+        &["contact"],
+        &["contact", "me"],
+        &["contact", "me", "at"],
+        &["contact", "phone"],
+        &["tel"],
+    ];
+    contact_suffixes
+        .iter()
+        .any(|suffix| contact_suffix_matches(&words, suffix))
+}
+
+fn contact_suffix_matches(words: &[&str], suffix: &[&str]) -> bool {
+    if !words.ends_with(suffix) {
+        return false;
+    }
+    suffix != ["phone"] || !words.ends_with(&["cell", "phone"])
+}
+
+fn phone_context_after_candidate(lowercase: &str, candidate_end: usize) -> bool {
+    let suffix = lowercase[candidate_end..].trim_start_matches(|character: char| {
+        character.is_ascii_whitespace() || matches!(character, ':' | '-' | '.' | ')')
+    });
+    let words = suffix
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .take(3)
+        .collect::<Vec<_>>();
+    let contact_prefixes: &[&[&str]] = &[
+        &["phone"],
+        &["phone", "number"],
+        &["mobile"],
+        &["mobile", "number"],
+        &["cell", "phone", "number"],
+        &["tel"],
+    ];
+    contact_prefixes
+        .iter()
+        .any(|prefix| words.starts_with(prefix))
+}
+
+fn has_long_digit_run(value: &str, minimum_run: usize) -> bool {
+    let mut run = 0;
+    for character in value.chars() {
+        if character.is_ascii_digit() {
+            run += 1;
+            if run >= minimum_run {
+                return true;
+            }
+        } else {
+            run = 0;
+        }
+    }
+    false
 }

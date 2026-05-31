@@ -509,3 +509,51 @@
   - `cargo run -p verify-schema-fixtures`
   - `cargo run -p verify-no-leak-fixtures`
   - `cargo run -p lessonforge-e2e -- --suite mvp`
+
+### CodeRabbit PR Triage Pass
+
+- Triage decision: accepted findings that exposed contract drift or hardening gaps: missing `auto_repair_preference` schema/spec coverage, review-claim expiry overflow, predictable review-claim verifier salt, symlink traversal in the no-inference guard, unsupported schema-pattern drift, overly broad no-leak PII heuristics, and Python checker static-safety false positives/false negatives.
+- Triage decision: rejected CodeRabbit requests to broadly generalize closed MVP fixture schemas. The MVP schema/fixture files intentionally remain narrow deterministic contracts; only the spec-backed optional `auto_repair_preference` field was added to `request.schema.json`.
+- Implementation notes:
+  - Added `auto_repair_preference` to request schema/spec allowlists and Rust request validation with the existing `unsupported_mvp_value` contract.
+  - Changed review-claim expiry to use saturating arithmetic and generated review-claim verifier salt from process-local CSPRNG bytes.
+  - Made no-inference scanning fail closed on symlinks instead of following them.
+  - Made checked-in schema verification reject unsupported `pattern` expressions before fixture validation.
+  - Tuned the no-leak fixture PII heuristic to avoid common STEM false positives while still rejecting grade records, email, phone-like, percent-grade, and student-roster shapes.
+  - Reworked Python checker static safety to ignore blocked tokens inside comments and strings, reject f-strings and unsafe loops fail-closed, and avoid accepting required functions hidden inside docstrings.
+- Follow-up adversarial contract review found two additional issues:
+  - Malformed non-string schema `pattern` keywords were accepted as unenforced constraints; schema verification now rejects them as schema compile failures.
+  - Review-claim idempotency was scoped by idempotency key alone; replay lookup now keys by review task, reviewer actor, and idempotency key so replacement reviewers can claim expired tasks with their own fresh leases.
+- Follow-up CodeRabbit triage:
+  - Accepted: constant-time review claim token comparison, bounded review-claim replay retention, contextual percent/PII review-text filtering, and Unix guards around Unix-only validator tests.
+  - Accepted second-round issues: request acknowledgement persistence, precise unsafe-text field paths, quarantine moderation safe reason handling, enum-derived transition event action, per-request workflow reset, active moderation-claim overwrite rejection, and unsupported JSON Schema type rejection.
+  - Rejected: broad schema generalization requests because MVP fixture schemas are intentionally closed contracts, and direct provider-string comparisons because central crates must continue passing the no-inference marker guard.
+- Final adversarial CodeRabbit-fix loop:
+  - Removed bounded review-claim replay pruning after reviewers found it violated the idempotency replay contract.
+  - Rejected overlong review-claim tokens before fixed-length constant-time comparison.
+  - Tightened Python checker static safety for semicolon-separated imports, inline compound-suite imports, line continuations, and nested required-function definitions.
+  - Aligned `auto_repair_preference` handling across schema, core, and API: non-string values fail as malformed, and unsupported enum strings fail with `unsupported_mvp_value`.
+  - Added no-inference dangling-symlink, no-leak phone/name, and schema compile-failure regression coverage.
+- CodeRabbit second-round triage decisions:
+  - Accepted: portable design-source paths in specs, deterministic retry-limit request reset wording, delimiter-aware typed ID secret filtering, duplicate moderation-category rejection, missing-source fail-closed e2e scans, `trusted_incomplete_static_only` public provenance, schema safe-text comments, explicit request-ID prefix derivation, and provider-default-port rejection for runner central origins.
+  - Accepted with narrowing: request unsafe digit detection now rejects only long contiguous digit runs, and validator public-text heuristics now use word/phrase boundaries for semantic markers so ordinary STEM words do not fail.
+  - Rejected: `serde_jcs` availability concerns because the workspace resolves and verifies the dependency locally, and broader closed-schema generalization because the MVP schemas intentionally remain deterministic fixture contracts.
+- Adversarial re-review found additional blockers in the second-round fixes:
+  - Restored heartbeat idempotency and single-lease claim rejection for plan-verification/review task states to match specs `005`, `006`, and `012`.
+  - Added deterministic phone-like PII rejection while preserving long-run STEM-number tolerance, compact credential alias rejection in typed IDs, safe generic unknown-field paths, normalized provider-port rejection for `11434`, symlink rejection in e2e source scans, and type/keyword family checks for closed schema compilation.
+  - Re-review found remaining country-code/extension phone-number and open-object schema drift gaps; request intake now rejects context-marked 7-15 digit phone forms and closed schema compilation requires every object schema to set `additionalProperties=false`.
+  - Final re-review found additional international phone, long-extension, false-positive, dangling-symlink, compact credential-alias, and embedded `sk-proj` gaps; request intake and fixture no-leak checks now cover non-US `+` country-code shapes while preserving ordinary STEM numeric text, e2e source scans return only safe failure codes for missing/dangling paths, and typed IDs reject embedded delimited `sk-` segments plus compact credential aliases.
+  - Final focused review found request phone detection was still too context-broad; narrowed phone context to phone-specific phrases and required a phone-shaped candidate so ordinary `extension question` and `contact force` numbered STEM text remains accepted while phone bases with `x`/`ext` suffixes are rejected.
+  - Last focused review found no-space phone extensions, contiguous `+` country-code phone numbers, first-`+` fixture scanning, and `sk_live`/plural credential alias gaps; request intake now scans phone-shaped candidate spans across the full string, fixture leak scanning evaluates every `+` candidate, and typed IDs reject `sk` segments with either `-` or `_` separators plus plural credential aliases.
+  - Latest adversarial triage found three remaining hardening edges: contextual phone parsing restarted inside long numeric identifiers, local/no-plus international phone shapes needed adjacent contact context, and loopback runner origins accepted pinned TLS policies without pin material.
+  - Request intake and fixture leak scanning now parse maximal adjacent phone candidate spans, require contact/call/text/tel/mobile context immediately before contextual local and no-plus international shapes, preserve ordinary educational `cell phone` ISBN/EAN examples, and reject `contact/call/text/tel` local or no-plus international contact numbers.
+  - Runner central API validation now requires `LoopbackDevelopment` with empty pin material for loopback HTTP origins; `PinnedCa` and `PinnedSpki` policies must provide complete pin material and expected server names even when the origin host is loopback.
+  - Final triage locked the remaining contact-intent phone cases into request-intake and no-leak regression tests, including bare `call`/`text` no-plus international numbers, while keeping educational `cell phone` ISBN/EAN text accepted.
+  - Focused gates passed after these fixes:
+    - `cargo test -p lessonforge_core --test request_workflow`
+    - `cargo test -p verify-no-leak-fixtures`
+    - `cargo test -p lessonforge_runner --test config_summary`
+  - Final adversarial parity re-review found fixture scanning did not mirror request intake for contact glue words before a phone candidate (`phone is 555-1234`, `mobile is 44 20 7946 0958`).
+  - The no-leak fixture scanner now trims the same safe glue words as request intake before matching contact context, and both request intake and fixture scanner tests cover the parity cases.
+  - Final targeted adversarial re-review returned `PASS` for phone-context parsing parity and runner TLS loopback pinned-policy validation.
+  - CodeRabbit resubmission raised two minor schema-bound findings; accepted both and tightened the closed fixture schemas for artifact manifest `contents` bounds and single-entry dummy moderation report category/reason arrays.

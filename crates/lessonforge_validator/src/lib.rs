@@ -4,6 +4,9 @@ use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
+#[cfg(not(unix))]
+compile_error!("lessonforge_validator currently requires Unix filesystem metadata semantics");
+
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -213,9 +216,8 @@ impl ArtifactValidationReport {
             validation_category: VALIDATOR_NAME.to_owned(),
             validation_state_summary: match self.status {
                 ValidationReportStatus::Passed => "trusted_passed",
-                ValidationReportStatus::Failed | ValidationReportStatus::IncompleteStaticOnly => {
-                    "trusted_failed"
-                }
+                ValidationReportStatus::Failed => "trusted_failed",
+                ValidationReportStatus::IncompleteStaticOnly => "trusted_incomplete_static_only",
             }
             .to_owned(),
         }
@@ -751,9 +753,10 @@ struct CheckerStaticSafety {
 }
 
 fn checker_static_safety(source: &str) -> CheckerStaticSafety {
-    let normalized = source.to_ascii_lowercase();
+    let code_without_literals = strip_python_comments_and_strings(source);
+    let joined_code = collapse_python_line_continuations(&code_without_literals);
+    let normalized = joined_code.to_ascii_lowercase();
     let blocked_tokens = [
-        "__",
         "builtins",
         "open",
         "exec",
@@ -768,9 +771,9 @@ fn checker_static_safety(source: &str) -> CheckerStaticSafety {
         "getattr",
         "setattr",
         "delattr",
+        "iter",
+        "range",
         "print",
-        "while true",
-        "for ",
     ];
     let blocked_modules = [
         "subprocess",
@@ -793,12 +796,11 @@ fn checker_static_safety(source: &str) -> CheckerStaticSafety {
         || blocked_tokens.iter().any(|token| {
             contains_word_token(&normalized, token) || normalized.contains(&format!("{token}("))
         });
-    let dangerous_module = blocked_modules.iter().any(|module| {
-        normalized.contains(&format!("import {module}"))
-            || normalized.contains(&format!("from {module}"))
-    });
+    let dangerous_module = contains_blocked_python_import(&normalized, &blocked_modules);
     let unsafe_shebang = source.lines().any(unsafe_shebang);
-    let top_level_unsafe = source.lines().any(|line| {
+    let unsafe_f_string = contains_python_f_string_literal(source);
+    let unsafe_loop = contains_unsafe_loop_construct(&normalized);
+    let top_level_unsafe = joined_code.lines().any(|line| {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
             return false;
@@ -808,7 +810,7 @@ fn checker_static_safety(source: &str) -> CheckerStaticSafety {
         }
         trimmed != "import math" && !trimmed.starts_with("def ")
     });
-    let required_functions = required_checker_functions_are_defined(source);
+    let required_functions = required_checker_functions_are_defined(&code_without_literals);
     let no_external_network = ![
         "socket", "ssl", "http", "urllib", "requests", "connect(", "urlopen",
     ]
@@ -820,9 +822,429 @@ fn checker_static_safety(source: &str) -> CheckerStaticSafety {
             && !dangerous_token
             && !dangerous_module
             && !top_level_unsafe
+            && !unsafe_f_string
+            && !unsafe_loop
             && !unsafe_shebang,
         no_external_network,
     }
+}
+
+fn collapse_python_line_continuations(source: &str) -> String {
+    let mut output = String::with_capacity(source.len());
+    let mut continuation = false;
+    for line in source.lines() {
+        let trimmed_end = line.trim_end();
+        let line_continues = trimmed_end.ends_with('\\');
+        let segment = if line_continues {
+            &trimmed_end[..trimmed_end.len().saturating_sub(1)]
+        } else {
+            line
+        };
+        if continuation {
+            output.push(' ');
+            output.push_str(segment.trim_start());
+        } else {
+            output.push_str(segment);
+        }
+        if line_continues {
+            continuation = true;
+        } else {
+            output.push('\n');
+            continuation = false;
+        }
+    }
+    if continuation {
+        output.push('\n');
+    }
+    output
+}
+
+fn contains_unsafe_loop_construct(normalized_code: &str) -> bool {
+    normalized_code.lines().any(|line| {
+        let trimmed = line.trim_start();
+        if contains_python_keyword(trimmed, "while") {
+            return true;
+        }
+        if let Some(after_for) = python_keyword_tail(trimmed, "for")
+            && finite_literal_for_loop_tail(after_for)
+        {
+            return false;
+        }
+        contains_python_keyword(trimmed, "for")
+    })
+}
+
+fn contains_blocked_python_import(normalized_code: &str, blocked_modules: &[&str]) -> bool {
+    normalized_code.lines().any(|line| {
+        line.split([';', ':']).any(|statement| {
+            let trimmed = statement.trim_start();
+            if let Some(after_import) = python_keyword_tail_after_space(trimmed, "import") {
+                return after_import
+                    .split(',')
+                    .filter_map(take_import_module_name)
+                    .any(|module| blocked_modules.contains(&module));
+            }
+            if let Some(after_from) = python_keyword_tail_after_space(trimmed, "from")
+                && let Some(module) = take_import_module_name(after_from)
+            {
+                return blocked_modules.contains(&module);
+            }
+            false
+        })
+    })
+}
+
+fn take_import_module_name(value: &str) -> Option<&str> {
+    let value = value.trim_start();
+    let mut end = 0;
+    for (index, character) in value.char_indices() {
+        if character.is_ascii_alphanumeric() || character == '_' || character == '.' {
+            end = index + character.len_utf8();
+        } else {
+            break;
+        }
+    }
+    if end == 0 {
+        return None;
+    }
+    let module_path = &value[..end];
+    let module = module_path.split('.').next().unwrap_or(module_path);
+    if module.is_empty() {
+        None
+    } else {
+        Some(module)
+    }
+}
+
+fn python_keyword_tail_after_space<'a>(value: &'a str, keyword: &str) -> Option<&'a str> {
+    let tail = value.strip_prefix(keyword)?;
+    if tail
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_whitespace())
+    {
+        Some(tail)
+    } else {
+        None
+    }
+}
+
+fn finite_literal_for_loop_tail(after_for: &str) -> bool {
+    let after_for = after_for.trim_start();
+    let Some((target, after_target)) = take_python_identifier(after_for) else {
+        return false;
+    };
+    let after_target = after_target.trim_start();
+    let Some(after_in) = python_keyword_tail(after_target, "in") else {
+        return false;
+    };
+    if !valid_python_identifier(target) {
+        return false;
+    }
+    let Some(iterable) = after_in.trim_start().strip_suffix(':') else {
+        return false;
+    };
+    let iterable = iterable.trim();
+    if !(iterable.starts_with('[') && iterable.ends_with(']')) {
+        return false;
+    }
+    let items = &iterable[1..iterable.len().saturating_sub(1)];
+    if items.len() > 256 {
+        return false;
+    }
+    items
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .all(|item| valid_python_identifier(item) || valid_numeric_literal(item))
+}
+
+fn python_keyword_tail<'a>(value: &'a str, keyword: &str) -> Option<&'a str> {
+    let tail = value.strip_prefix(keyword)?;
+    if tail
+        .chars()
+        .next()
+        .is_some_and(|character| character.is_ascii_alphanumeric() || character == '_')
+    {
+        return None;
+    }
+    Some(tail)
+}
+
+fn contains_python_keyword(value: &str, keyword: &str) -> bool {
+    let mut offset = 0;
+    while offset < value.len() {
+        let Some(relative_start) = value[offset..].find(keyword) else {
+            return false;
+        };
+        let start = offset + relative_start;
+        let end = start + keyword.len();
+        let before_is_identifier = value[..start]
+            .chars()
+            .next_back()
+            .is_some_and(|character| character.is_ascii_alphanumeric() || character == '_');
+        let after_is_identifier = value[end..]
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_alphanumeric() || character == '_');
+        if !before_is_identifier && !after_is_identifier {
+            return true;
+        }
+        offset = end;
+    }
+    false
+}
+
+fn take_python_identifier(value: &str) -> Option<(&str, &str)> {
+    let mut chars = value.char_indices();
+    let (_, first) = chars.next()?;
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return None;
+    }
+    let mut end = first.len_utf8();
+    for (index, character) in chars {
+        if character.is_ascii_alphanumeric() || character == '_' {
+            end = index + character.len_utf8();
+        } else {
+            break;
+        }
+    }
+    Some((&value[..end], &value[end..]))
+}
+
+fn valid_python_identifier(value: &str) -> bool {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first.is_ascii_alphabetic() || first == '_')
+        && chars.all(|character| character.is_ascii_alphanumeric() || character == '_')
+}
+
+fn valid_numeric_literal(value: &str) -> bool {
+    let value = value.strip_prefix('-').unwrap_or(value);
+    if value.is_empty() {
+        return false;
+    }
+    let mut decimal_seen = false;
+    let mut digit_seen = false;
+    for character in value.chars() {
+        if character.is_ascii_digit() {
+            digit_seen = true;
+        } else if character == '.' && !decimal_seen {
+            decimal_seen = true;
+        } else {
+            return false;
+        }
+    }
+    digit_seen
+}
+
+fn contains_python_f_string_literal(source: &str) -> bool {
+    let mut state = PythonStringState::Normal;
+    for line in source.lines() {
+        let chars = line.chars().collect::<Vec<_>>();
+        let mut index = 0;
+        while index < chars.len() {
+            match state {
+                PythonStringState::Normal => {
+                    let character = chars[index];
+                    if character == '#' {
+                        break;
+                    }
+                    if character == '\'' || character == '"' {
+                        if string_prefix_before_quote(&chars, index)
+                            .is_some_and(|prefix| matches!(prefix, "f" | "fr" | "rf"))
+                        {
+                            return true;
+                        }
+                        if index + 2 < chars.len()
+                            && chars[index + 1] == character
+                            && chars[index + 2] == character
+                        {
+                            state = PythonStringState::Triple(character);
+                            index += 3;
+                        } else {
+                            state = PythonStringState::Single(character);
+                            index += 1;
+                        }
+                    } else {
+                        index += 1;
+                    }
+                }
+                PythonStringState::Single(quote) => {
+                    if chars[index] == '\\' {
+                        index += 1;
+                        if index < chars.len() {
+                            index += 1;
+                        }
+                    } else {
+                        if chars[index] == quote {
+                            state = PythonStringState::Normal;
+                        }
+                        index += 1;
+                    }
+                }
+                PythonStringState::Triple(quote) => {
+                    if index + 2 < chars.len()
+                        && chars[index] == quote
+                        && chars[index + 1] == quote
+                        && chars[index + 2] == quote
+                    {
+                        state = PythonStringState::Normal;
+                        index += 3;
+                    } else {
+                        index += 1;
+                    }
+                }
+            }
+        }
+        if matches!(state, PythonStringState::Single(_)) {
+            state = PythonStringState::Normal;
+        }
+    }
+    false
+}
+
+fn string_prefix_before_quote(chars: &[char], quote_index: usize) -> Option<&'static str> {
+    let mut start = quote_index;
+    while start > 0 && chars[start - 1].is_ascii_alphabetic() {
+        start -= 1;
+    }
+    match chars[start..quote_index]
+        .iter()
+        .collect::<String>()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "f" => Some("f"),
+        "fr" => Some("fr"),
+        "rf" => Some("rf"),
+        _ => None,
+    }
+}
+
+fn strip_python_comments_and_strings(source: &str) -> String {
+    let mut output = String::with_capacity(source.len());
+    let mut state = PythonStringState::Normal;
+    for line in source.lines() {
+        let chars = line.chars().collect::<Vec<_>>();
+        let mut index = 0;
+        while index < chars.len() {
+            match state {
+                PythonStringState::Normal => {
+                    let character = chars[index];
+                    if character == '#' {
+                        break;
+                    }
+                    if let Some(prefix_len) = python_string_prefix_len_at(&chars, index) {
+                        for _ in 0..prefix_len {
+                            output.push(' ');
+                        }
+                        index += prefix_len;
+                    } else if character == '\'' || character == '"' {
+                        if index + 2 < chars.len()
+                            && chars[index + 1] == character
+                            && chars[index + 2] == character
+                        {
+                            state = PythonStringState::Triple(character);
+                            output.push(' ');
+                            output.push(' ');
+                            output.push(' ');
+                            index += 3;
+                        } else {
+                            state = PythonStringState::Single(character);
+                            output.push(' ');
+                            index += 1;
+                        }
+                    } else {
+                        output.push(character);
+                        index += 1;
+                    }
+                }
+                PythonStringState::Single(quote) => {
+                    if chars[index] == '\\' {
+                        output.push(' ');
+                        index += 1;
+                        if index < chars.len() {
+                            output.push(' ');
+                            index += 1;
+                        }
+                    } else {
+                        if chars[index] == quote {
+                            state = PythonStringState::Normal;
+                        }
+                        output.push(' ');
+                        index += 1;
+                    }
+                }
+                PythonStringState::Triple(quote) => {
+                    if index + 2 < chars.len()
+                        && chars[index] == quote
+                        && chars[index + 1] == quote
+                        && chars[index + 2] == quote
+                    {
+                        state = PythonStringState::Normal;
+                        output.push(' ');
+                        output.push(' ');
+                        output.push(' ');
+                        index += 3;
+                    } else {
+                        output.push(' ');
+                        index += 1;
+                    }
+                }
+            }
+        }
+        let line_continues_string =
+            matches!(state, PythonStringState::Single(_)) && line.ends_with('\\');
+        if matches!(state, PythonStringState::Single(_)) && !line_continues_string {
+            state = PythonStringState::Normal;
+        }
+        output.push('\n');
+    }
+    output
+}
+
+fn python_string_prefix_len_at(chars: &[char], start: usize) -> Option<usize> {
+    if !chars
+        .get(start)
+        .is_some_and(|character| character.is_ascii_alphabetic())
+    {
+        return None;
+    }
+    let mut end = start;
+    while chars
+        .get(end)
+        .is_some_and(|character| character.is_ascii_alphabetic())
+    {
+        end += 1;
+    }
+    if !chars
+        .get(end)
+        .is_some_and(|character| *character == '\'' || *character == '"')
+    {
+        return None;
+    }
+    let prefix = chars[start..end]
+        .iter()
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if matches!(
+        prefix.as_str(),
+        "r" | "u" | "b" | "f" | "br" | "rb" | "fr" | "rf"
+    ) {
+        Some(end - start)
+    } else {
+        None
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PythonStringState {
+    Normal,
+    Single(char),
+    Triple(char),
 }
 
 fn read_utf8_file(bundle_root: &Path, allowed_name: &str) -> Option<String> {
@@ -896,6 +1318,9 @@ fn unsafe_shebang(line: &str) -> bool {
 fn required_checker_functions_are_defined(source: &str) -> bool {
     let mut found = BTreeSet::new();
     for line in source.lines() {
+        if line.starts_with(' ') || line.starts_with('\t') {
+            continue;
+        }
         let trimmed = line.trim_start();
         if !trimmed.starts_with("def ") {
             continue;
@@ -951,12 +1376,12 @@ fn unsafe_markdown(value: &str) -> bool {
         || normalized.contains("/var/")
         || normalized.contains("/tmp/")
         || normalized.contains("c:\\")
-        || normalized.contains("provider ")
-        || normalized.contains("model ")
-        || normalized.contains("prompt")
-        || normalized.contains("raw transcript")
+        || contains_word_or_phrase(&normalized, "provider")
+        || contains_word_or_phrase(&normalized, "model")
+        || contains_word_or_phrase(&normalized, "prompt")
+        || contains_word_or_phrase(&normalized, "raw transcript")
         || normalized.contains("transcript:")
-        || normalized.contains("quota")
+        || contains_word_or_phrase(&normalized, "quota")
         || normalized.contains("../")
         || normalized.contains("~/")
         || secret_like(value)
@@ -978,12 +1403,12 @@ fn unsafe_public_text(value: &str) -> bool {
         || normalized.contains("../")
         || normalized.contains("~/")
         || normalized.contains("c:\\")
-        || normalized.contains("provider ")
-        || normalized.contains("model ")
-        || normalized.contains("prompt")
-        || normalized.contains("raw transcript")
+        || contains_word_or_phrase(&normalized, "provider")
+        || contains_word_or_phrase(&normalized, "model")
+        || contains_word_or_phrase(&normalized, "prompt")
+        || contains_word_or_phrase(&normalized, "raw transcript")
         || normalized.contains("transcript:")
-        || normalized.contains("quota")
+        || contains_word_or_phrase(&normalized, "quota")
         || value.chars().any(char::is_control)
         || secret_like(value)
         || pii_like(value)
@@ -1009,8 +1434,7 @@ fn secret_like(value: &str) -> bool {
 fn pii_like(value: &str) -> bool {
     let normalized = value.to_ascii_lowercase();
     [
-        "student ",
-        "student:",
+        "student",
         "student record",
         "named student",
         "grade",
@@ -1018,7 +1442,7 @@ fn pii_like(value: &str) -> bool {
         "placement",
     ]
     .iter()
-    .any(|needle| normalized.contains(needle))
+    .any(|needle| contains_word_or_phrase(&normalized, needle))
 }
 
 fn inappropriate_content(value: &str) -> bool {
@@ -1035,7 +1459,16 @@ fn inappropriate_content(value: &str) -> bool {
         "illicit",
     ]
     .iter()
-    .any(|needle| normalized.contains(needle))
+    .any(|needle| contains_word_or_phrase(&normalized, needle))
+}
+
+fn contains_word_or_phrase(normalized: &str, needle: &str) -> bool {
+    normalized.match_indices(needle).any(|(index, _)| {
+        let before = normalized[..index].chars().next_back();
+        let after = normalized[index + needle.len()..].chars().next();
+        before.is_none_or(|character| !character.is_ascii_alphanumeric())
+            && after.is_none_or(|character| !character.is_ascii_alphanumeric())
+    })
 }
 
 fn safe_location_for_check(check: ValidationCheckName) -> &'static str {

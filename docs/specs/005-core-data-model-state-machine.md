@@ -181,6 +181,7 @@ Core fields:
 - `constraints`
 - `license_preference`
 - `visibility`
+- `auto_repair_preference`
 - `forbidden_content_acknowledged`
 - `state`
 
@@ -683,6 +684,7 @@ States:
 
 - `trusted_passed`
 - `trusted_failed`
+- `trusted_incomplete_static_only`
 - `untrusted_evidence`
 - `rejected`
 

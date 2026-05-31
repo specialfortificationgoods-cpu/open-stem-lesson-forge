@@ -251,10 +251,10 @@ fn verify_unavailable_transport_surface(
 }
 
 fn scan_source_tree_for_absence(path: &Path, forbidden_markers: &[&str]) -> Result<(), String> {
-    if !path.exists() {
-        return Ok(());
-    }
     let metadata = fs::symlink_metadata(path).map_err(|_| "negative_surface_scan_failed")?;
+    if metadata.file_type().is_symlink() {
+        return Err("negative_surface_scan_failed".to_owned());
+    }
     if metadata.is_dir() {
         let mut entries = fs::read_dir(path)
             .map_err(|_| "negative_surface_scan_failed")?
@@ -373,4 +373,50 @@ fn validated_dummy(
 ) -> Result<lessonforge_runner::ValidatedRunnerConfig, String> {
     let config = RunnerConfig::dummy(runner_id, public_name, mode, "http://127.0.0.1:8080");
     validate_runner_config(&config).map_err(|_| "runner_config_invalid".to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg(unix)]
+    fn source_tree_scan_rejects_symlinked_entries() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let outside = tempfile::tempdir()?;
+        let source_root = temp.path().join("src");
+        fs::create_dir(&source_root)?;
+        fs::write(outside.path().join("hidden.rs"), "websocket_command")?;
+        std::os::unix::fs::symlink(
+            outside.path().join("hidden.rs"),
+            source_root.join("hidden.rs"),
+        )?;
+
+        let error = scan_source_tree_for_absence(&source_root, &["websocket_command"]);
+
+        assert_eq!(error, Err("negative_surface_scan_failed".to_owned()));
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn source_tree_scan_rejects_missing_and_dangling_symlink_paths_safely()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let source_root = temp.path().join("src");
+        fs::create_dir(&source_root)?;
+        let missing = temp.path().join("missing").join("secret.rs");
+        let dangling = source_root.join("dangling.rs");
+        std::os::unix::fs::symlink(&missing, &dangling)?;
+
+        assert_eq!(
+            scan_source_tree_for_absence(&dangling, &["websocket_command"]),
+            Err("negative_surface_scan_failed".to_owned())
+        );
+        assert_eq!(
+            scan_source_tree_for_absence(&missing, &["websocket_command"]),
+            Err("negative_surface_scan_failed".to_owned())
+        );
+        Ok(())
+    }
 }

@@ -24,6 +24,8 @@
     "lesson_duration_minutes": { "const": 45 },
     "desired_artifacts": {
       "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
       "items": { "enum": ["worksheet", "answer_key", "python_checker", "teacher_notes"] }
     },
     "constraints": {
@@ -33,6 +35,9 @@
     },
     "license_preference": { "const": "CC-BY-4.0" },
     "visibility": { "const": "public" },
-    "forbidden_content_acknowledged": { "const": true }
+    "forbidden_content_acknowledged": { "const": true },
+    "auto_repair_preference": {
+      "enum": ["no_automated_repair", "request_bounded_code_repair"]
+    }
   }
 }

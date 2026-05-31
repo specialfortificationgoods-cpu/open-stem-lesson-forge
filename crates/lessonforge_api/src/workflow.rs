@@ -18,7 +18,6 @@ use lessonforge_core::state::{
 };
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Default)]
 pub struct DeterministicWorkflow {
@@ -46,6 +45,11 @@ impl DeterministicWorkflow {
         payload: RequestIntakePayload,
         context: IntakeContext,
     ) -> Result<RequestIntakeOutcome, RequestWorkflowError> {
+        if self.request.is_some() {
+            return Err(RequestWorkflowError::Conflict {
+                reason: "workflow_request_already_active",
+            });
+        }
         let outcome = accept_request_intake(payload, context)?;
         self.moderation_task_id = Some(outcome.moderation_task.task_id.clone());
         self.request = Some(outcome.request.clone());
@@ -72,6 +76,15 @@ impl DeterministicWorkflow {
         if expected_task_id != &task_id {
             return Err(RequestWorkflowError::ModerationRejected {
                 reason: "moderation_task_mismatch",
+            });
+        }
+        if self
+            .moderation_claim
+            .as_ref()
+            .is_some_and(|claim| claim.active)
+        {
+            return Err(RequestWorkflowError::ModerationRejected {
+                reason: "moderation_lease_already_active",
             });
         }
         self.moderation_claim = Some(ModerationClaim {
@@ -119,7 +132,11 @@ impl DeterministicWorkflow {
             moderation_task_id: claim.task_id.clone(),
             planning_task_id: PlanningTaskId::try_from(format!(
                 "ptask_{}",
-                claim.request_id.as_str().trim_start_matches("req_")
+                claim.request_id.as_str().strip_prefix("req_").ok_or(
+                    RequestWorkflowError::ModerationRejected {
+                        reason: "planning_task_id_derivation_failed",
+                    }
+                )?
             ))
             .map_err(|_| RequestWorkflowError::ModerationRejected {
                 reason: "planning_task_id_derivation_failed",
@@ -202,11 +219,11 @@ impl DeterministicWorkflow {
         }
         validate_idempotency_key(idempotency_key)?;
         self.expire_review_claim_if_needed();
-        if let Some(replay) = self
-            .review_claim_replays
-            .iter()
-            .find(|replay| replay.idempotency_key == idempotency_key)
-        {
+        if let Some(replay) = self.review_claim_replays.iter().find(|replay| {
+            replay.task_id == review_task_id
+                && replay.idempotency_key == idempotency_key
+                && replay.reviewer.reviewer_actor_id == reviewer.reviewer_actor_id
+        }) {
             if replay.task_id != review_task_id
                 || replay.lease_id != lease_id
                 || replay.reviewer != reviewer
@@ -250,7 +267,7 @@ impl DeterministicWorkflow {
             review_task_state: ReviewTaskState::Claimed,
             claim_token_returned: true,
             claim_token: Some(derive_review_claim_token(&lease_id, idempotency_key)),
-            expires_at: self.now + REVIEW_LEASE_TTL_SECONDS,
+            expires_at: self.now.saturating_add(REVIEW_LEASE_TTL_SECONDS),
         };
         self.review_claim = Some(ReviewClaim {
             task_id: review_task_id.clone(),
@@ -517,23 +534,39 @@ fn review_claim_token_matches(
     claim_idempotency_key: &str,
     claim_token: &str,
 ) -> bool {
-    derive_review_claim_token(lease_id, claim_idempotency_key) == claim_token
+    if claim_token.len() != 64 {
+        return false;
+    }
+    constant_time_eq(
+        derive_review_claim_token(lease_id, claim_idempotency_key).as_bytes(),
+        claim_token.as_bytes(),
+    )
+}
+
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut diff = 0;
+    for (left_byte, right_byte) in left.iter().zip(right) {
+        diff |= usize::from(left_byte ^ right_byte);
+    }
+    diff == 0
 }
 
 fn review_claim_verifier_salt() -> &'static str {
     static SALT: OnceLock<String> = OnceLock::new();
     SALT.get_or_init(|| {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|duration| duration.as_nanos())
-            .unwrap_or(0);
-        let stack_marker = 0u8;
-        format!(
-            "review-claim-verifier-v1:{}:{}:{:p}",
-            std::process::id(),
-            nanos,
-            &stack_marker
-        )
+        let mut bytes = [0u8; 32];
+        if getrandom::fill(&mut bytes).is_err() {
+            std::process::abort();
+        }
+        let mut output = String::from("review-claim-verifier-v2:");
+        for byte in bytes {
+            output.push(hex_char(byte >> 4));
+            output.push(hex_char(byte & 0x0f));
+        }
+        output
     })
 }
 

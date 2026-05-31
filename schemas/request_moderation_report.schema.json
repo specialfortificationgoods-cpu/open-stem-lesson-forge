@@ -1,5 +1,6 @@
 {
   "title": "Request Moderation Report",
+  "description": "Closed MVP fixture schema for the deterministic dummy moderation report; intentionally narrower than the future production moderation-report envelope.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -19,7 +20,19 @@
     "lease_id": { "type": "string" },
     "moderation_kind": { "const": "dummy_fixture" },
     "decision": { "const": "allow_mvp_planning" },
-    "category_flags": { "type": "array", "items": { "const": "none" } },
-    "safe_reason_codes": { "type": "array", "items": { "const": "moderation_allowed" } }
+    "category_flags": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "uniqueItems": true,
+      "items": { "const": "none" }
+    },
+    "safe_reason_codes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "uniqueItems": true,
+      "items": { "const": "moderation_allowed" }
+    }
   }
 }

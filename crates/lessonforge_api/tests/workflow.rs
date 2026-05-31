@@ -7,10 +7,14 @@ use lessonforge_core::moderation::{
     ModerationCategory, ModerationDecision, ModerationKind, ModerationReportSubmission,
     ModerationSafeReason,
 };
-use lessonforge_core::request::{AutoRepairPreference, IntakeContext, StoredRequestVisibility};
+use lessonforge_core::request::{
+    AutoRepairPreference, IntakeContext, IntakeRejectionReason, RequestWorkflowError,
+    StoredRequestVisibility,
+};
 use lessonforge_core::review::{
     ArtifactVisibility, FindingInput, FindingSeverity, FindingType, HumanReviewWorkPacketProof,
-    ReviewContext, ReviewSubmission, ReviewerProfile, SourceActorLineage, SourceOutputActor,
+    ReviewContext, ReviewPolicyError, ReviewSubmission, ReviewerProfile, SourceActorLineage,
+    SourceOutputActor,
 };
 use lessonforge_core::state::{
     ActorCapability, ActorStatus, ActorType, ArtifactState, PlanningTaskState,
@@ -40,6 +44,16 @@ fn api_workflow_composes_intake_and_moderation_deterministically() -> Result<(),
         ActorId::try_from("actor_moderator_001")?,
         "moderation-claim-token",
     )?;
+    assert!(
+        workflow
+            .claim_request_moderation_task(
+                intake.moderation_task.task_id.clone(),
+                LeaseId::try_from("lease_rmoderation_energy_002")?,
+                ActorId::try_from("actor_moderator_002")?,
+                "other-moderation-claim-token",
+            )
+            .is_err()
+    );
     let wrong_token_report = moderation_report(&intake, "wrong-token")?;
     assert!(
         workflow
@@ -59,6 +73,75 @@ fn api_workflow_composes_intake_and_moderation_deterministically() -> Result<(),
 
     let replay = workflow.submit_moderation_report(report)?;
     assert_eq!(replay.request_state, RequestState::PlanningOpen);
+    assert_eq!(workflow.planning_task_count(), 1);
+    Ok(())
+}
+
+#[test]
+fn api_workflow_rejects_malformed_auto_repair_preference() -> Result<(), Box<dyn Error>> {
+    for value in [json!(123), json!(null), json!({})] {
+        let mut workflow = DeterministicWorkflow::new();
+        let mut payload = valid_payload();
+        payload["auto_repair_preference"] = value;
+
+        let error = match workflow.submit_request(payload, intake_context()?) {
+            Ok(_) => return Err("malformed auto_repair_preference should reject".into()),
+            Err(error) => error,
+        };
+
+        match error {
+            RequestWorkflowError::Rejected { reason, field_path } => {
+                assert_eq!(reason, IntakeRejectionReason::InvalidField);
+                assert_eq!(field_path, "/auto_repair_preference");
+            }
+            _ => return Err("expected request intake rejection".into()),
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn api_workflow_rejects_unsupported_auto_repair_preference() -> Result<(), Box<dyn Error>> {
+    let mut workflow = DeterministicWorkflow::new();
+    let mut payload = valid_payload();
+    payload["auto_repair_preference"] = json!("keep_fixing");
+
+    let error = match workflow.submit_request(payload, intake_context()?) {
+        Ok(_) => return Err("unsupported auto_repair_preference should reject".into()),
+        Err(error) => error,
+    };
+
+    match error {
+        RequestWorkflowError::Rejected { reason, field_path } => {
+            assert_eq!(reason, IntakeRejectionReason::UnsupportedMvpValue);
+            assert_eq!(field_path, "/auto_repair_preference");
+        }
+        _ => return Err("expected request intake rejection".into()),
+    }
+    Ok(())
+}
+
+#[test]
+fn api_workflow_rejects_second_request_without_resetting_state() -> Result<(), Box<dyn Error>> {
+    let mut workflow = DeterministicWorkflow::new();
+    let intake = workflow.submit_request(valid_payload(), intake_context()?)?;
+    workflow.claim_request_moderation_task(
+        intake.moderation_task.task_id.clone(),
+        LeaseId::try_from("lease_rmoderation_energy_001")?,
+        ActorId::try_from("actor_moderator_001")?,
+        "moderation-claim-token",
+    )?;
+    workflow.submit_moderation_report(moderation_report(&intake, "moderation-claim-token")?)?;
+    assert_eq!(workflow.planning_task_count(), 1);
+
+    let error = workflow.submit_request(valid_payload(), intake_context()?);
+
+    assert!(matches!(
+        error,
+        Err(RequestWorkflowError::Conflict {
+            reason: "workflow_request_already_active"
+        })
+    ));
     assert_eq!(workflow.planning_task_count(), 1);
     Ok(())
 }
@@ -394,6 +477,38 @@ fn api_workflow_review_uses_current_gate_state_at_claim_and_submit() -> Result<(
 }
 
 #[test]
+fn api_workflow_review_rejects_overlong_claim_token() -> Result<(), Box<dyn Error>> {
+    let mut workflow = DeterministicWorkflow::new();
+    let task = workflow.open_review_task(review_context()?)?;
+    workflow.claim_review_task(
+        task.review_task_id.clone(),
+        LeaseId::try_from("lease_review_energy_001")?,
+        "review-claim-001",
+        reviewer(
+            "actor_reviewer_001",
+            "operator_reviewer",
+            "conflict_reviewer",
+        )?,
+        source_lineage()?,
+    )?;
+
+    let overlong_token = "a".repeat(1024 * 1024);
+    let error = workflow.submit_human_review(
+        task.review_task_id,
+        LeaseId::try_from("lease_review_energy_001")?,
+        &overlong_token,
+        "review-submit-001",
+        ReviewSubmission::approved_no_findings(),
+    );
+
+    assert!(matches!(
+        error,
+        Err(ReviewPolicyError::ReviewLeaseNotActive)
+    ));
+    Ok(())
+}
+
+#[test]
 fn api_workflow_review_rejects_expired_claim_and_separator_ambiguous_changed_replay()
 -> Result<(), Box<dyn Error>> {
     let mut workflow = DeterministicWorkflow::new();
@@ -430,7 +545,7 @@ fn api_workflow_review_rejects_expired_claim_and_separator_ambiguous_changed_rep
     let new_claim = workflow.claim_review_task(
         task.review_task_id.clone(),
         LeaseId::try_from("lease_review_energy_002")?,
-        "review-claim-002",
+        "review-claim-001",
         reviewer(
             "actor_reviewer_002",
             "operator_reviewer_2",
@@ -476,6 +591,75 @@ fn api_workflow_review_rejects_expired_claim_and_separator_ambiguous_changed_rep
             )
             .is_err()
     );
+    Ok(())
+}
+
+#[test]
+fn api_workflow_review_claim_expiry_saturates_at_u64_max() -> Result<(), Box<dyn Error>> {
+    let mut workflow = DeterministicWorkflow::new();
+    workflow.set_now(u64::MAX - 10);
+    let task = workflow.open_review_task(review_context()?)?;
+
+    let claim = workflow.claim_review_task(
+        task.review_task_id,
+        LeaseId::try_from("lease_review_energy_001")?,
+        "review-claim-001",
+        reviewer(
+            "actor_reviewer_001",
+            "operator_reviewer",
+            "conflict_reviewer",
+        )?,
+        source_lineage()?,
+    )?;
+
+    assert_eq!(claim.expires_at, u64::MAX);
+    Ok(())
+}
+
+#[test]
+fn api_workflow_review_claim_replays_are_not_evicted() -> Result<(), Box<dyn Error>> {
+    let mut workflow = DeterministicWorkflow::new();
+    workflow.set_now(1);
+    let task = workflow.open_review_task(review_context()?)?;
+    let mut first_claim = None;
+
+    for index in 0..130 {
+        let claim = workflow.claim_review_task(
+            task.review_task_id.clone(),
+            LeaseId::try_from(format!("lease_review_energy_{index:03}"))?,
+            &format!("review-claim-{index:03}"),
+            reviewer(
+                &format!("actor_reviewer_{index:03}"),
+                &format!("operator_reviewer_{index:03}"),
+                &format!("conflict_reviewer_{index:03}"),
+            )?,
+            source_lineage()?,
+        )?;
+        if index == 0 {
+            first_claim = Some(claim.clone());
+        }
+        workflow.set_now(claim.expires_at.saturating_add(1));
+    }
+
+    let Some(first_claim) = first_claim else {
+        return Err("first claim should be captured".into());
+    };
+    let replay = workflow.claim_review_task(
+        task.review_task_id,
+        LeaseId::try_from("lease_review_energy_000")?,
+        "review-claim-000",
+        reviewer(
+            "actor_reviewer_000",
+            "operator_reviewer_000",
+            "conflict_reviewer_000",
+        )?,
+        source_lineage()?,
+    )?;
+
+    assert_eq!(replay.lease_id, first_claim.lease_id);
+    assert_eq!(replay.expires_at, first_claim.expires_at);
+    assert!(!replay.claim_token_returned);
+    assert!(replay.claim_token.is_none());
     Ok(())
 }
 

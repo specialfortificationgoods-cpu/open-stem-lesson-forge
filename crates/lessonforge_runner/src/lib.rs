@@ -1098,42 +1098,49 @@ fn validate_origin(origin: &str, tls: &TlsSection) -> Result<(), RunnerConfigErr
         return Err(RunnerConfigError::UnsafeCentralApiOrigin);
     }
     let lower = origin.to_ascii_lowercase();
+    let provider_default_port = parse_port(rest)
+        .transpose()?
+        .is_some_and(|port| port == 11_434);
     if lower.contains("ollama")
         || lower.contains("openai")
         || lower.contains("anthropic")
-        || lower.contains("localhost:11434")
+        || provider_default_port
     {
         return Err(RunnerConfigError::UnsafeCentralApiOrigin);
     }
     if scheme != "https" && !(scheme == "http" && loopback) {
         return Err(RunnerConfigError::UnsafeCentralApiOrigin);
     }
-    if !loopback {
-        match tls.trust_policy {
-            TlsTrustPolicy::LoopbackDevelopment => {
+    match tls.trust_policy {
+        TlsTrustPolicy::LoopbackDevelopment => {
+            if !loopback
+                || !tls.pinned_ca_pem_path.is_empty()
+                || !tls.pinned_spki_sha256.is_empty()
+                || !tls.expected_server_name.is_empty()
+            {
                 return Err(RunnerConfigError::UnsafeCentralApiOrigin);
             }
-            TlsTrustPolicy::PinnedCa => {
-                validate_pin_path(&tls.pinned_ca_pem_path)?;
-                validate_expected_server_name(&tls.expected_server_name, host)?;
-                if !tls.pinned_spki_sha256.is_empty() {
-                    return Err(RunnerConfigError::UnsafeCentralApiOrigin);
-                }
+        }
+        TlsTrustPolicy::PinnedCa => {
+            if scheme != "https" {
+                return Err(RunnerConfigError::UnsafeCentralApiOrigin);
             }
-            TlsTrustPolicy::PinnedSpki => {
-                validate_spki_pin(&tls.pinned_spki_sha256)?;
-                validate_expected_server_name(&tls.expected_server_name, host)?;
-                if !tls.pinned_ca_pem_path.is_empty() {
-                    return Err(RunnerConfigError::UnsafeCentralApiOrigin);
-                }
+            validate_pin_path(&tls.pinned_ca_pem_path)?;
+            validate_expected_server_name(&tls.expected_server_name, host)?;
+            if !tls.pinned_spki_sha256.is_empty() {
+                return Err(RunnerConfigError::UnsafeCentralApiOrigin);
             }
         }
-    } else if tls.trust_policy == TlsTrustPolicy::LoopbackDevelopment
-        && (!tls.pinned_ca_pem_path.is_empty()
-            || !tls.pinned_spki_sha256.is_empty()
-            || !tls.expected_server_name.is_empty())
-    {
-        return Err(RunnerConfigError::UnsafeCentralApiOrigin);
+        TlsTrustPolicy::PinnedSpki => {
+            if scheme != "https" {
+                return Err(RunnerConfigError::UnsafeCentralApiOrigin);
+            }
+            validate_spki_pin(&tls.pinned_spki_sha256)?;
+            validate_expected_server_name(&tls.expected_server_name, host)?;
+            if !tls.pinned_ca_pem_path.is_empty() {
+                return Err(RunnerConfigError::UnsafeCentralApiOrigin);
+            }
+        }
     }
     Ok(())
 }
@@ -1211,6 +1218,28 @@ fn parse_host(rest: &str) -> Result<&str, RunnerConfigError> {
 
 fn is_decimal_port(port: &str) -> bool {
     !port.is_empty() && port.chars().all(|character| character.is_ascii_digit())
+}
+
+fn parse_port(rest: &str) -> Option<Result<u16, RunnerConfigError>> {
+    let port = if let Some(bracketed) = rest.strip_prefix('[') {
+        let (_, port_part) = bracketed.split_once(']')?;
+        if port_part.is_empty() {
+            return None;
+        }
+        port_part.strip_prefix(':')?
+    } else {
+        let mut parts = rest.split(':');
+        let _host = parts.next()?;
+        let port = parts.next()?;
+        if parts.next().is_some() {
+            return Some(Err(RunnerConfigError::UnsafeCentralApiOrigin));
+        }
+        port
+    };
+    Some(
+        port.parse::<u16>()
+            .map_err(|_| RunnerConfigError::UnsafeCentralApiOrigin),
+    )
 }
 
 fn validate_summary_fields(config: &RunnerConfig) -> Result<(), RunnerConfigError> {

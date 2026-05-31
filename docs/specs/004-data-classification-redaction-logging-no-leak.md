@@ -123,6 +123,7 @@ Allowed request fields:
 - `constraints`
 - `license_preference`
 - `visibility`
+- `auto_repair_preference`
 - `forbidden_content_acknowledged`
 - `status`
 - `created_at`

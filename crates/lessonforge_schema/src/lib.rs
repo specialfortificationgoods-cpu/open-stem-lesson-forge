@@ -164,6 +164,16 @@ pub fn verify_fixture_set(
 }
 
 pub fn validate_mvp_request(value: &Value) -> Result<(), SchemaError> {
+    if let Value::Object(object) = value
+        && let Some(auto_repair_preference) = object.get("auto_repair_preference")
+        && !auto_repair_preference.is_string()
+    {
+        return Err(SchemaError::new(
+            SchemaName::MvpRequest,
+            "invalid_shape",
+            "/auto_repair_preference",
+        ));
+    }
     let request: MvpRequest = deserialize(SchemaName::MvpRequest, value)?;
     require_eq(
         SchemaName::MvpRequest,
@@ -233,6 +243,15 @@ pub fn validate_mvp_request(value: &Value) -> Result<(), SchemaError> {
         "/constraints",
         12,
     )?;
+    if let Some(auto_repair_preference) = &request.auto_repair_preference {
+        require_eq(
+            SchemaName::MvpRequest,
+            auto_repair_preference == "no_automated_repair"
+                || auto_repair_preference == "request_bounded_code_repair",
+            "unsupported_mvp_value",
+            "/auto_repair_preference",
+        )?;
+    }
     Ok(())
 }
 
@@ -630,6 +649,250 @@ fn validate_schema_document(schema: SchemaName, value: &Value) -> Result<(), Sch
         object.get("type").and_then(Value::as_str) == Some("object"),
         "schema_compile_failed",
         "/schemas",
+    )?;
+    reject_unsupported_schema_keywords(schema, value)
+}
+
+fn reject_unsupported_schema_keywords(
+    schema: SchemaName,
+    value: &Value,
+) -> Result<(), SchemaError> {
+    match value {
+        Value::Object(object) => {
+            for keyword in object.keys() {
+                if !schema_keyword_is_supported(keyword) {
+                    return Err(SchemaError::new(
+                        schema,
+                        "schema_compile_failed",
+                        "/schemas",
+                    ));
+                }
+            }
+            let has_supported_assertion = [
+                "type",
+                "const",
+                "enum",
+                "anyOf",
+                "pattern",
+                "properties",
+                "items",
+            ]
+            .iter()
+            .any(|keyword| object.contains_key(*keyword));
+            if !has_supported_assertion {
+                return Err(SchemaError::new(
+                    schema,
+                    "schema_compile_failed",
+                    "/schemas",
+                ));
+            }
+            if let Some(required_value) = object.get("required") {
+                let Some(required) = required_value.as_array() else {
+                    return Err(SchemaError::new(
+                        schema,
+                        "schema_compile_failed",
+                        "/schemas",
+                    ));
+                };
+                if !required.iter().all(Value::is_string) {
+                    return Err(SchemaError::new(
+                        schema,
+                        "schema_compile_failed",
+                        "/schemas",
+                    ));
+                }
+            }
+            if object
+                .get("additionalProperties")
+                .is_some_and(|additional| !additional.is_boolean())
+            {
+                return Err(SchemaError::new(
+                    schema,
+                    "schema_compile_failed",
+                    "/schemas",
+                ));
+            }
+            if object.get("type").and_then(Value::as_str) == Some("object")
+                && object.get("additionalProperties").and_then(Value::as_bool) != Some(false)
+            {
+                return Err(SchemaError::new(
+                    schema,
+                    "schema_compile_failed",
+                    "/schemas",
+                ));
+            }
+            for keyword in ["minItems", "maxItems", "minLength", "maxLength"] {
+                if object
+                    .get(keyword)
+                    .is_some_and(|numeric_value| numeric_value.as_u64().is_none())
+                {
+                    return Err(SchemaError::new(
+                        schema,
+                        "schema_compile_failed",
+                        "/schemas",
+                    ));
+                }
+            }
+            if object
+                .get("uniqueItems")
+                .is_some_and(|unique_items| !unique_items.is_boolean())
+            {
+                return Err(SchemaError::new(
+                    schema,
+                    "schema_compile_failed",
+                    "/schemas",
+                ));
+            }
+            if let Some(type_value) = object.get("type") {
+                let Some(type_name) = type_value.as_str() else {
+                    return Err(SchemaError::new(
+                        schema,
+                        "schema_compile_failed",
+                        "/schemas",
+                    ));
+                };
+                if !matches!(
+                    type_name,
+                    "object" | "array" | "string" | "integer" | "boolean"
+                ) {
+                    return Err(SchemaError::new(
+                        schema,
+                        "schema_compile_failed",
+                        "/schemas",
+                    ));
+                }
+            }
+            require_type_for_keyword_family(
+                schema,
+                object,
+                "object",
+                &["properties", "required", "additionalProperties"],
+            )?;
+            require_type_for_keyword_family(
+                schema,
+                object,
+                "array",
+                &["items", "minItems", "maxItems", "uniqueItems"],
+            )?;
+            require_type_for_keyword_family(
+                schema,
+                object,
+                "string",
+                &["pattern", "minLength", "maxLength"],
+            )?;
+            if object
+                .get("anyOf")
+                .is_some_and(|any_of| any_of.as_array().is_none_or(|items| items.is_empty()))
+            {
+                return Err(SchemaError::new(
+                    schema,
+                    "schema_compile_failed",
+                    "/schemas",
+                ));
+            }
+            if object
+                .get("enum")
+                .is_some_and(|enum_value| enum_value.as_array().is_none())
+            {
+                return Err(SchemaError::new(
+                    schema,
+                    "schema_compile_failed",
+                    "/schemas",
+                ));
+            }
+            if let Some(properties_value) = object.get("properties") {
+                let Some(properties) = properties_value.as_object() else {
+                    return Err(SchemaError::new(
+                        schema,
+                        "schema_compile_failed",
+                        "/schemas",
+                    ));
+                };
+                for child in properties.values() {
+                    reject_unsupported_schema_keywords(schema, child)?;
+                }
+            }
+            if let Some(items) = object.get("items") {
+                if !items.is_object() {
+                    return Err(SchemaError::new(
+                        schema,
+                        "schema_compile_failed",
+                        "/schemas",
+                    ));
+                }
+                reject_unsupported_schema_keywords(schema, items)?;
+            }
+            if let Some(any_of) = object.get("anyOf").and_then(Value::as_array) {
+                for child in any_of {
+                    reject_unsupported_schema_keywords(schema, child)?;
+                }
+            }
+            if let Some(pattern_value) = object.get("pattern") {
+                let Some(pattern) = pattern_value.as_str() else {
+                    return Err(SchemaError::new(
+                        schema,
+                        "schema_compile_failed",
+                        "/schemas",
+                    ));
+                };
+                if !schema_pattern_is_supported(pattern) {
+                    return Err(SchemaError::new(
+                        schema,
+                        "unsupported_schema_pattern",
+                        "/schemas",
+                    ));
+                }
+            }
+            Ok(())
+        }
+        Value::Array(_) | Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
+            Err(SchemaError::new(
+                schema,
+                "schema_compile_failed",
+                "/schemas",
+            ))
+        }
+    }
+}
+
+fn require_type_for_keyword_family(
+    schema: SchemaName,
+    object: &serde_json::Map<String, Value>,
+    required_type: &'static str,
+    keywords: &[&str],
+) -> Result<(), SchemaError> {
+    if keywords.iter().any(|keyword| object.contains_key(*keyword))
+        && object.get("type").and_then(Value::as_str) != Some(required_type)
+    {
+        return Err(SchemaError::new(
+            schema,
+            "schema_compile_failed",
+            "/schemas",
+        ));
+    }
+    Ok(())
+}
+
+fn schema_keyword_is_supported(keyword: &str) -> bool {
+    matches!(
+        keyword,
+        "$schema"
+            | "title"
+            | "description"
+            | "type"
+            | "const"
+            | "enum"
+            | "anyOf"
+            | "pattern"
+            | "properties"
+            | "items"
+            | "additionalProperties"
+            | "required"
+            | "minItems"
+            | "maxItems"
+            | "uniqueItems"
+            | "minLength"
+            | "maxLength"
     )
 }
 
@@ -640,10 +903,15 @@ fn validate_schema_value(
     field_path: &'static str,
 ) -> Result<(), SchemaError> {
     if let Some(any_of) = schema.get("anyOf").and_then(Value::as_array) {
-        if any_of
-            .iter()
-            .any(|option| validate_schema_value(schema_name, option, value, field_path).is_ok())
-        {
+        let mut matched = false;
+        for option in any_of {
+            match validate_schema_value(schema_name, option, value, field_path) {
+                Ok(()) => matched = true,
+                Err(error) if error.code == "schema_compile_failed" => return Err(error),
+                Err(_) => {}
+            }
+        }
+        if matched {
             return Ok(());
         }
         return Err(SchemaError::new(
@@ -685,7 +953,11 @@ fn validate_schema_value(
             "fixture_schema_validation_failed",
             field_path,
         ),
-        _ => Ok(()),
+        _ => Err(SchemaError::new(
+            schema_name,
+            "schema_compile_failed",
+            "/schemas",
+        )),
     }
 }
 
@@ -850,6 +1122,17 @@ fn schema_pattern_matches(pattern: &str, text: &str) -> bool {
         "^[a-z0-9_-]+$" => valid_ascii_slug(text),
         _ => false,
     }
+}
+
+fn schema_pattern_is_supported(pattern: &str) -> bool {
+    matches!(
+        pattern,
+        "^plan_[a-z0-9_-]+$"
+            | "^actor_[a-z0-9_-]+$"
+            | "^pverify_[a-z0-9_-]+$"
+            | "^no_arbitrary_[a-z]{6}$"
+            | "^[a-z0-9_-]+$"
+    )
 }
 
 fn valid_ascii_slug(text: &str) -> bool {
@@ -1133,6 +1416,9 @@ fn validate_safe_text(
     value: &str,
     field_path: &'static str,
 ) -> Result<(), SchemaError> {
+    // Fixture schemas use this deliberately broad deterministic heuristic to keep
+    // raw private values out of checked-in examples; errors expose only safe codes
+    // and field paths, never the rejected value.
     let lower = value.to_ascii_lowercase();
     let has_local_path = value.contains("/Users/")
         || value.contains("/home/")
@@ -1247,6 +1533,7 @@ struct MvpRequest {
     license_preference: String,
     visibility: String,
     forbidden_content_acknowledged: bool,
+    auto_repair_preference: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -307,7 +307,7 @@ The trusted validator performs exactly these MVP checks:
 
 Checks are deterministic and ordered as listed.
 
-Failure of any required check maps the persisted `ValidationReport.state` to `trusted_failed`.
+Failure of any required check maps the persisted `ValidationReport.state` to `trusted_failed`. Static-only validation that passes all executable-independent checks but skips checker execution maps to `trusted_incomplete_static_only`.
 
 ### Obvious Inappropriate Content Heuristic
 
@@ -373,7 +373,7 @@ Wire status to core state mapping:
 |---|---|---|
 | `passed` | `trusted_passed` | May move `draft_generated -> machine_validated`. |
 | `failed` | `trusted_failed` | May move `draft_generated -> validation_failed`. |
-| `incomplete_static_only` | `trusted_failed` | Must not move to `machine_validated`; may move to `validation_failed` with safe reason `checker_execution_not_performed`. |
+| `incomplete_static_only` | `trusted_incomplete_static_only` | Must not move to `machine_validated`; may move to `validation_failed` with safe reason `checker_execution_not_performed`. |
 
 Only `report.status=passed` with every required check `passed` may create `ValidationReport.state=trusted_passed`. Any `failed` or `skipped_static_only` required check produces a non-passing report state and cannot open review.
 
@@ -489,6 +489,7 @@ Trusted validation report effects:
 
 - `trusted_passed` may move artifact `draft_generated -> machine_validated`.
 - `trusted_failed` may move artifact `draft_generated -> validation_failed`.
+- `trusted_incomplete_static_only` may move artifact `draft_generated -> validation_failed` with safe reason `checker_execution_not_performed`.
 - untrusted runner validation evidence cannot move artifact state.
 - manifest `status_claim` cannot move artifact state.
 - public label cannot exceed central artifact state.

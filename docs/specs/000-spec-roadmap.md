@@ -1,7 +1,7 @@
 # Open STEM Lesson Forge Spec Roadmap
 
 Status: Passed adversarial review  
-Source design: `/Users/macmini/Downloads/open_stem_lesson_forge_design_v0_2_deterministic_core.md`  
+Source design: `open_stem_lesson_forge_design_v0_2_deterministic_core.md`
 Repository instructions: `AGENTS.md`
 
 ## Purpose

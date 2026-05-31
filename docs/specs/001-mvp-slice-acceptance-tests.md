@@ -2,7 +2,7 @@
 
 Status: Passed adversarial review  
 Roadmap: `docs/specs/000-spec-roadmap.md`  
-Design source: `/Users/macmini/Downloads/open_stem_lesson_forge_design_v0_2_deterministic_core.md`
+Design source: `open_stem_lesson_forge_design_v0_2_deterministic_core.md`
 
 ## Purpose
 

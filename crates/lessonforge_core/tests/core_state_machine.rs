@@ -12,6 +12,7 @@ use std::error::Error;
 #[test]
 fn typed_ids_accept_only_their_prefix_and_safe_suffix() {
     assert!(RequestId::try_from("req_energy_pack").is_ok());
+    assert!(RequestId::try_from("req_monkey").is_ok());
     assert!(PlanningTaskId::try_from("ptask_energy_plan").is_ok());
     assert!(WorkPacketId::try_from("wp_checker").is_ok());
     assert!(ActorId::try_from("actor_runner_1").is_ok());
@@ -22,6 +23,18 @@ fn typed_ids_accept_only_their_prefix_and_safe_suffix() {
     assert!(RequestId::try_from("req_teacher@example.com").is_err());
     assert!(RequestId::try_from("req_/tmp/local-path").is_err());
     assert!(RequestId::try_from("req_sk-proj-secret").is_err());
+    assert!(RequestId::try_from("req_sk_live_abc123").is_err());
+    assert!(RequestId::try_from("req_demo-sk-proj-abc123").is_err());
+    assert!(RequestId::try_from("req_demo_sk_live_abc123").is_err());
+    assert!(RequestId::try_from("req_api_key").is_err());
+    assert!(RequestId::try_from("req_credentials").is_err());
+    assert!(RequestId::try_from("req_apikey").is_err());
+    assert!(RequestId::try_from("req_secretkey").is_err());
+    assert!(RequestId::try_from("req_bearertoken").is_err());
+    assert!(RequestId::try_from("req_clientsecret").is_err());
+    assert!(RequestId::try_from("req_idtoken").is_err());
+    assert!(RequestId::try_from("req_jwttoken").is_err());
+    assert!(ActorId::try_from("actor_sessiontoken").is_err());
     assert!(RequestId::try_from("req_provider_detail").is_err());
     assert!(RequestId::try_from("req_student_alice").is_err());
     assert!(RequestId::try_from("req_api_key_reference").is_err());
@@ -156,9 +169,19 @@ fn surface_specific_claimable_states_use_their_own_transition_entities()
         PlanVerificationTaskState::Open.transition(PlanningTaskTransition::Claim),
         Ok(PlanVerificationTaskState::Claimed)
     );
+    assert!(
+        PlanVerificationTaskState::Claimed
+            .transition(PlanningTaskTransition::Claim)
+            .is_err()
+    );
     assert_eq!(
         ReviewTaskState::Open.transition(PlanningTaskTransition::Claim),
         Ok(ReviewTaskState::Claimed)
+    );
+    assert!(
+        ReviewTaskState::Claimed
+            .transition(PlanningTaskTransition::Claim)
+            .is_err()
     );
 
     let Err(error) = ReviewTaskState::Completed.transition(PlanningTaskTransition::Claim) else {
@@ -231,7 +254,7 @@ fn transition_application_emits_safe_event_projection() -> Result<(), Box<dyn Er
         actor_id: ActorId::try_from("actor_system_core")?,
         actor_type: ActorType::SystemCore,
         command_id: "cmd_intake_passed".to_owned(),
-        action: "deterministic_intake_passed".to_owned(),
+        action: "spoofed_context_action".to_owned(),
         reason_code: "deterministic_intake_passed".to_owned(),
         safe_field_path: Some("/state".to_owned()),
         related_ids: vec!["rmtask_energy".to_owned()],
@@ -453,6 +476,7 @@ fn lease_slots_heartbeat_and_release_replay_are_token_bound() -> Result<(), Box<
     let mut changed_heartbeat = heartbeat;
     changed_heartbeat.payload_digest =
         "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee".to_owned();
+    changed_heartbeat.now = 125;
     assert!(
         heartbeat_applied
             .clone()

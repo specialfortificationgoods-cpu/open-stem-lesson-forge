@@ -235,7 +235,7 @@ impl RequestState {
                 actor_id: context.actor_id,
                 actor_type: context.actor_type,
                 command_id: context.command_id,
-                action: context.action,
+                action: action.as_str().to_owned(),
                 reason_code: context.reason_code,
                 safe_field_path: context.safe_field_path,
                 related_ids: context.related_ids,

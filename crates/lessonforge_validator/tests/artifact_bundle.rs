@@ -30,6 +30,10 @@ fn valid_bundle_in_static_only_mode_is_explicitly_incomplete() -> Result<(), Box
         report.public_provenance().validation_category,
         "deterministic_validator"
     );
+    assert_eq!(
+        report.public_provenance().validation_state_summary,
+        "trusted_incomplete_static_only"
+    );
     assert_eq!(report.authoritative_digests.file_digests.len(), 5);
     assert!(
         report
@@ -106,7 +110,11 @@ fn stale_submitted_digest_metadata_fails_with_safe_code() -> Result<(), Box<dyn 
         },
     )?;
 
-    assert_eq!(report.status, ValidationReportStatus::Failed);
+    assert_eq!(
+        report.status,
+        ValidationReportStatus::Failed,
+        "stale submitted digest metadata should fail"
+    );
     assert!(report.failure_codes().contains(&"artifact_digest_mismatch"));
     assert!(report.safe_locations_are_allowlisted());
     assert!(report.rendered_safe_text().find("Changed notes").is_none());
@@ -114,6 +122,7 @@ fn stale_submitted_digest_metadata_fails_with_safe_code() -> Result<(), Box<dyn 
 }
 
 #[test]
+#[cfg(unix)]
 fn rejected_symlink_allowed_filename_is_not_read_into_authoritative_digests()
 -> Result<(), Box<dyn Error>> {
     let outside = tempfile::tempdir()?;
@@ -231,6 +240,7 @@ fn missing_extra_or_directory_entries_fail_with_safe_locations() -> Result<(), B
 }
 
 #[test]
+#[cfg(unix)]
 fn unsafe_path_entries_fail_without_raw_name_persistence() -> Result<(), Box<dyn Error>> {
     let hidden = tempfile::tempdir()?;
     write_valid_bundle(hidden.path())?;
@@ -395,13 +405,34 @@ fn markdown_and_manifest_public_text_safety_fail_without_raw_leaks() -> Result<(
 
         let report = validate_bundle(temp.path(), &context(CheckerExecutionMode::StaticOnly))?;
 
-        assert_eq!(report.status, ValidationReportStatus::Failed);
+        assert_eq!(
+            report.status,
+            ValidationReportStatus::Failed,
+            "{needle} should fail public text safety"
+        );
         assert!(report.failure_codes().contains(&"markdown_safety_failed"));
         assert!(report.rendered_safe_text().find(needle).is_none());
         assert_ne!(report.public_provenance().generated_by_category, needle);
         assert_ne!(report.public_provenance().validation_category, needle);
         assert!(report.safe_locations_are_allowlisted());
     }
+    Ok(())
+}
+
+#[test]
+fn public_text_safety_uses_word_boundaries_for_semantic_markers() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    write_valid_bundle(temp.path())?;
+    replace_manifest_field(
+        temp.path(),
+        "\"title\": \"Conservation of energy lesson pack\"",
+        "\"title\": \"Promptness and asexual reproduction context\"",
+    )?;
+
+    let report = validate_bundle(temp.path(), &context(CheckerExecutionMode::StaticOnly))?;
+
+    assert_eq!(report.status, ValidationReportStatus::IncompleteStaticOnly);
+    assert!(!report.failure_codes().contains(&"markdown_safety_failed"));
     Ok(())
 }
 
@@ -418,10 +449,130 @@ fn checker_static_safety_rejects_dangerous_python_without_execution() -> Result<
         "#!D:\\Python\\python.exe\nimport math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    return 0.5 * mass_kg * speed_m_per_s ** 2\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
         "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    return math.__dict__[\"__builtins__\"][\"open\"] (\"/etc/passwd\")\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
         "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    return (1).__class__.__mro__[1].__subclasses__()\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    value = f\"{open('/etc/passwd').read()}\"\n    return float(value)\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    value = f\"{__import__('os').system('id')}\"\n    return float(value)\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    value = rf\"\"\"{open('/etc/passwd').read()}\"\"\"\n    return float(value)\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    value = fr\"\"\"{__import__('os').system('id')}\"\"\"\n    return float(value)\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    for _ in iter(int, 1):\n        pass\n    return 0.0\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    while True:\n        pass\n    return 0.0\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    while 1:\n        pass\n    return 0.0\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    while 1.0:\n        pass\n    return 0.0\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    while(True):\n        pass\n    return 0.0\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    while\tTrue:\n        pass\n    return 0.0\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    for _ in range(10**12):\n        pass\n    return 0.0\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    for(x)in range(10**12):\n        pass\n    return 0.0\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    for\t_ in range(10**12):\n        pass\n    return 0.0\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    for _ in [0] * 1000000000000:\n        pass\n    return 0.0\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    return sum(x for x in range(10**12))\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    return len([x for x in range(10**12)])\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    return len({x for x in range(10**12)})\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    return len({x: x for x in range(10**12)})\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    return sum(range(10**12))\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    return len(list(range(10**12)))\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
         "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    exec (\"print('bad')\")\n    return 0.0\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    import\tos\n    return float(os.system(\"id\"))\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    from\tos import system\n    return float(system(\"id\"))\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    import \\\n        os\n    return float(os.system(\"id\"))\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    from \\\n        os import system\n    return float(system(\"id\"))\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    value = 1; import os; return float(os.system(\"id\"))\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    value = 1; from os import system; return float(system(\"id\"))\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    if True: import os\n    return float(os.system(\"id\"))\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
+        "import math\n\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n    if True: from os import system\n    return float(system(\"id\"))\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
         "import math\n# def kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return mass_kg * g_m_per_s2 * height_m\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)\n",
         "while True:\n    pass\n",
         "print('OK')\n",
+    ] {
+        let temp = tempfile::tempdir()?;
+        write_valid_bundle(temp.path())?;
+        fs::write(temp.path().join("checker.py"), checker)?;
+
+        let report = validate_bundle(temp.path(), &context(CheckerExecutionMode::StaticOnly))?;
+
+        assert_eq!(
+            report.status,
+            ValidationReportStatus::Failed,
+            "{checker} should fail static safety"
+        );
+        assert!(
+            report
+                .failure_codes()
+                .contains(&"python_checker_static_safety_failed")
+        );
+        assert!(
+            report
+                .failure_codes()
+                .contains(&"python_checker_runs_skipped_static_only")
+        );
+        assert!(report.rendered_safe_text().find(checker).is_none());
+    }
+    Ok(())
+}
+
+#[test]
+fn checker_static_safety_ignores_blocked_tokens_in_comments_and_strings()
+-> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    write_valid_bundle(temp.path())?;
+    fs::write(
+        temp.path().join("checker.py"),
+        r#"r"""Module note mentioning open('/etc/passwd'), __class__, and http://example.test.
+This module docstring is documentation, not executable checker behavior.
+"""
+import math
+
+def kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:
+    note = R"__class__ open('/etc/passwd') for documentation only"
+    return 0.5 * mass_kg * speed_m_per_s ** 2
+
+def gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:
+    """Mention http://example.test, __import__, and open across a docstring.
+    These words document rejected patterns but are not executable code.
+    """
+    # __import__("socket") should not count inside comments.
+    return mass_kg * g_m_per_s2 * height_m
+
+def speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:
+    for value in [kinetic_energy_j]:
+        return math.sqrt((2.0 * value) / mass_kg)
+    return 0.0
+"#,
+    )?;
+
+    let report = validate_bundle(temp.path(), &context(CheckerExecutionMode::StaticOnly))?;
+
+    assert_eq!(report.status, ValidationReportStatus::IncompleteStaticOnly);
+    assert!(
+        !report
+            .failure_codes()
+            .contains(&"python_checker_static_safety_failed")
+    );
+    Ok(())
+}
+
+#[test]
+fn checker_static_safety_does_not_accept_required_functions_inside_docstrings()
+-> Result<(), Box<dyn Error>> {
+    for checker in [
+        r#"import math
+"""
+def kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:
+    return 0.0
+def gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:
+    return 0.0
+def speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:
+    return 0.0
+"""
+"#,
+        r#"import math
+def wrapper():
+    def kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:
+        return 0.0
+    def gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:
+        return 0.0
+    def speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:
+        return 0.0
+"#,
+        "import math\nnote = \"\\\ndef kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:\"\n\ndef gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:\n    return 0.0\n\ndef speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:\n    return 0.0\n",
     ] {
         let temp = tempfile::tempdir()?;
         write_valid_bundle(temp.path())?;
@@ -435,12 +586,6 @@ fn checker_static_safety_rejects_dangerous_python_without_execution() -> Result<
                 .failure_codes()
                 .contains(&"python_checker_static_safety_failed")
         );
-        assert!(
-            report
-                .failure_codes()
-                .contains(&"python_checker_runs_skipped_static_only")
-        );
-        assert!(report.rendered_safe_text().find(checker).is_none());
     }
     Ok(())
 }

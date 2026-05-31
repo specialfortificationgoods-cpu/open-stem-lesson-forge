@@ -93,6 +93,7 @@ fn suffix_has_unsafe_content(suffix: &str) -> bool {
     const FORBIDDEN_SUFFIX_PARTS: &[&str] = &[
         "api_key",
         "cookie",
+        "credentials",
         "credential",
         "email",
         "home",
@@ -102,20 +103,57 @@ fn suffix_has_unsafe_content(suffix: &str) -> bool {
         "password",
         "provider",
         "secret",
-        "sk-proj",
         "student",
         "tmp",
         "token",
         "users",
     ];
+    const FORBIDDEN_COMPACT_SUFFIX_PARTS: &[&str] = &[
+        "accesstoken",
+        "apikey",
+        "authtoken",
+        "bearertoken",
+        "clientsecret",
+        "idtoken",
+        "jwttoken",
+        "refreshtoken",
+        "secretkey",
+        "sessiontoken",
+    ];
 
     let lowercase = suffix.to_ascii_lowercase();
     suffix.len() > MAX_ID_SUFFIX_LEN
         || lowercase.starts_with("sk-")
-        || FORBIDDEN_SUFFIX_PARTS
-            .iter()
-            .any(|forbidden| lowercase.contains(forbidden))
+        || lowercase.starts_with("sk_")
+        || lowercase.contains("-sk-")
+        || lowercase.contains("-sk_")
+        || lowercase.contains("_sk-")
+        || lowercase.contains("_sk_")
+        || suffix_has_forbidden_compact_alias(&lowercase, FORBIDDEN_COMPACT_SUFFIX_PARTS)
+        || suffix_has_forbidden_segment(&lowercase, FORBIDDEN_SUFFIX_PARTS)
         || !suffix.chars().all(|character| {
             character.is_ascii_alphanumeric() || character == '_' || character == '-'
         })
+}
+
+fn suffix_has_forbidden_segment(lowercase: &str, forbidden_parts: &[&str]) -> bool {
+    forbidden_parts.iter().any(|forbidden| {
+        lowercase == *forbidden
+            || lowercase
+                .strip_prefix(forbidden)
+                .is_some_and(|tail| tail.starts_with(['_', '-']))
+            || lowercase
+                .strip_suffix(forbidden)
+                .is_some_and(|head| head.ends_with(['_', '-']))
+            || lowercase.contains(&format!("_{forbidden}_"))
+            || lowercase.contains(&format!("_{forbidden}-"))
+            || lowercase.contains(&format!("-{forbidden}_"))
+            || lowercase.contains(&format!("-{forbidden}-"))
+    })
+}
+
+fn suffix_has_forbidden_compact_alias(lowercase: &str, forbidden_parts: &[&str]) -> bool {
+    forbidden_parts
+        .iter()
+        .any(|forbidden| lowercase.contains(forbidden))
 }

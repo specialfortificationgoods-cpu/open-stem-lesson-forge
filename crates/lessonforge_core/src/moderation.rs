@@ -100,16 +100,36 @@ impl ModerationReportSubmission {
             ModerationDecision::RejectRequest | ModerationDecision::QuarantineRequest => {
                 !contains_none
                     && !self.category_flags.is_empty()
-                    && self
-                        .category_flags
-                        .iter()
-                        .all(|category| matching_reason_present(*category, &self.safe_reason_codes))
+                    && categories_are_unique(&self.category_flags)
+                    && self.category_flags.iter().all(|category| {
+                        matching_reason_present(*category, self.decision, &self.safe_reason_codes)
+                    })
             }
         }
     }
 }
 
-fn matching_reason_present(category: ModerationCategory, reasons: &[ModerationSafeReason]) -> bool {
+fn categories_are_unique(categories: &[ModerationCategory]) -> bool {
+    let mut seen = Vec::with_capacity(categories.len());
+    for category in categories {
+        if seen.contains(category) {
+            return false;
+        }
+        seen.push(*category);
+    }
+    true
+}
+
+fn matching_reason_present(
+    category: ModerationCategory,
+    decision: ModerationDecision,
+    reasons: &[ModerationSafeReason],
+) -> bool {
+    if decision == ModerationDecision::QuarantineRequest
+        && reasons.contains(&ModerationSafeReason::ModerationQuarantineReviewNeeded)
+    {
+        return true;
+    }
     let expected = match category {
         ModerationCategory::None => ModerationSafeReason::ModerationAllowed,
         ModerationCategory::Sexual => ModerationSafeReason::ModerationRejectedSexual,
