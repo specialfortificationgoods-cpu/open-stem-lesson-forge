@@ -558,6 +558,43 @@ fn missing_central_paths_fail_closed() -> Result<(), Box<dyn Error>> {
 
 #[cfg(unix)]
 #[test]
+fn required_central_manifest_symlink_fails_closed() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let external = tempfile::tempdir()?;
+    write_workspace_manifest(
+        temp.path(),
+        &[
+            "lessonforge_core",
+            "lessonforge_api",
+            "lessonforge_schema",
+            "lessonforge_validator",
+        ],
+    )?;
+    write_crate(external.path(), "lessonforge_core")?;
+    let manifest = temp.path().join("crates/lessonforge_core/Cargo.toml");
+    fs::remove_file(&manifest)?;
+    std::os::unix::fs::symlink(external.path().join("Cargo.toml"), &manifest)?;
+
+    let output = Command::new(verifier())
+        .arg("--root")
+        .arg(temp.path())
+        .output()?;
+
+    assert!(
+        !output.status.success(),
+        "expected required central manifest symlink to fail\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("required central manifest is a symlink"),
+        "stderr should identify the rejected manifest symlink"
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn dangling_central_data_symlink_fails_closed() -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
     write_workspace_manifest(

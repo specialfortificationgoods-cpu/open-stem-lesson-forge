@@ -30,8 +30,26 @@ fn valid_mvp_request_creates_request_and_moderation_task_only() -> Result<(), Bo
         "request_moderation_report.schema.json"
     );
     assert!(outcome.planning_task.is_none());
-    assert_eq!(outcome.request.desired_artifacts.len(), 4);
+    assert_eq!(
+        outcome.request.desired_artifacts,
+        vec!["worksheet", "answer_key", "python_checker", "teacher_notes"]
+    );
     assert!(outcome.request.forbidden_content_acknowledged);
+    Ok(())
+}
+
+#[test]
+fn desired_artifacts_persist_in_canonical_order() -> Result<(), Box<dyn Error>> {
+    let mut payload = valid_request_payload();
+    payload["desired_artifacts"] =
+        json!(["teacher_notes", "python_checker", "answer_key", "worksheet"]);
+
+    let outcome = accept_request_intake(payload, intake_context()?)?;
+
+    assert_eq!(
+        outcome.request.desired_artifacts,
+        vec!["worksheet", "answer_key", "python_checker", "teacher_notes"]
+    );
     Ok(())
 }
 
@@ -137,6 +155,10 @@ fn unsupported_mvp_values_and_limits_reject_before_persistence() -> Result<(), B
         ("visibility", json!({})),
         ("desired_artifacts", json!(["worksheet", "simulation"])),
         ("desired_artifacts", json!(["worksheet", "worksheet"])),
+        (
+            "desired_artifacts",
+            json!(["worksheet", "answer_key", "python_checker"]),
+        ),
         ("constraints", json!(vec!["ok"; 13])),
         ("constraints", json!(["x".repeat(241)])),
     ] {
@@ -407,6 +429,17 @@ fn intake_rejections_include_safe_field_paths() -> Result<(), Box<dyn Error>> {
         return Err("invalid artifact should reject with item field path".into());
     };
     assert_eq!(field_path, "/desired_artifacts/1");
+
+    let mut payload = valid_request_payload();
+    payload["desired_artifacts"] = json!(["worksheet", "answer_key", "python_checker"]);
+    let Err(lessonforge_core::request::RequestWorkflowError::Rejected {
+        reason: IntakeRejectionReason::InvalidField,
+        field_path,
+    }) = accept_request_intake(payload, intake_context()?)
+    else {
+        return Err("missing artifact should reject with collection field path".into());
+    };
+    assert_eq!(field_path, "/desired_artifacts");
 
     let mut payload = valid_request_payload();
     payload["constraints"] = json!(["x".repeat(241)]);

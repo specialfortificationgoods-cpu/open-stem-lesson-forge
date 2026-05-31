@@ -1020,11 +1020,9 @@ fn validate_schema_object(
         }
     }
     let properties = schema.get("properties").and_then(Value::as_object);
-    if schema.get("additionalProperties").and_then(Value::as_bool) == Some(false)
-        && let Some(properties) = properties
-    {
+    if schema.get("additionalProperties").and_then(Value::as_bool) == Some(false) {
         for key in object.keys() {
-            if !properties.contains_key(key) {
+            if !properties.is_some_and(|properties| properties.contains_key(key)) {
                 return Err(SchemaError::new(
                     schema_name,
                     "fixture_schema_validation_failed",

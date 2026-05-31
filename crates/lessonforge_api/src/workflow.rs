@@ -257,12 +257,13 @@ impl DeterministicWorkflow {
         }
         validate_idempotency_key(idempotency_key)?;
         self.expire_review_claim_if_needed();
+        self.prune_review_claim_replays();
         let replay_key = ReviewClaimReplayKey {
             task_id: review_task_id.clone(),
             idempotency_key: idempotency_key.to_owned(),
             reviewer_actor_id: reviewer.reviewer_actor_id.clone(),
         };
-        if let Some(replay) = self.review_claim_replays.get(&replay_key) {
+        if let Some(replay) = self.review_claim_replays.get(&replay_key).cloned() {
             if replay.task_id != review_task_id
                 || replay.lease_id != lease_id
                 || replay.reviewer != reviewer
@@ -270,11 +271,19 @@ impl DeterministicWorkflow {
             {
                 return Err(ReviewPolicyError::ReviewSubmissionLineageMismatch);
             }
-            return Ok(ReviewClaimResult {
-                claim_token_returned: false,
-                claim_token: None,
-                ..replay.result.clone()
-            });
+            if self.review_claim_replay_is_active(
+                &replay,
+                idempotency_key,
+                &reviewer,
+                &source_lineage,
+            ) {
+                return Ok(ReviewClaimResult {
+                    claim_token_returned: false,
+                    claim_token: None,
+                    ..replay.result.clone()
+                });
+            }
+            self.review_claim_replays.remove(&replay_key);
         }
         let Some(task) = &self.review_task else {
             return Err(ReviewPolicyError::ReviewSourceStateNotEligible);
@@ -301,6 +310,7 @@ impl DeterministicWorkflow {
         };
         validate_review_claim(task, &probe)?;
         let review_claim_secret = self.review_claim_secret()?;
+        let expires_at = self.now.saturating_add(REVIEW_LEASE_TTL_SECONDS);
         let result = ReviewClaimResult {
             review_task_id: review_task_id.clone(),
             lease_id: lease_id.clone(),
@@ -309,9 +319,10 @@ impl DeterministicWorkflow {
             claim_token: Some(derive_review_claim_token(
                 &lease_id,
                 idempotency_key,
+                expires_at,
                 review_claim_secret,
             )),
-            expires_at: self.now.saturating_add(REVIEW_LEASE_TTL_SECONDS),
+            expires_at,
         };
         self.review_claim = Some(ReviewClaim {
             task_id: review_task_id.clone(),
@@ -365,6 +376,7 @@ impl DeterministicWorkflow {
             if !review_claim_token_matches(
                 &stored.lease_id,
                 &stored.claim_idempotency_key,
+                stored.claim_expires_at,
                 claim_token,
                 review_claim_secret,
             ) {
@@ -391,6 +403,7 @@ impl DeterministicWorkflow {
             || !review_claim_token_matches(
                 &claim.lease_id,
                 &claim.idempotency_key,
+                claim.expires_at,
                 claim_token,
                 review_claim_secret,
             )
@@ -401,6 +414,7 @@ impl DeterministicWorkflow {
         let source_lineage = claim.source_lineage.clone();
         let claim_active = claim.active;
         let claim_idempotency_key = claim.idempotency_key.clone();
+        let claim_expires_at = claim.expires_at;
         let gate = self.current_review_claim_gate_context()?;
         let result = submit_review(
             task.clone(),
@@ -429,6 +443,7 @@ impl DeterministicWorkflow {
             review_task_id,
             lease_id,
             claim_idempotency_key,
+            claim_expires_at,
             idempotency_key: idempotency_key.to_owned(),
             submission_digest,
             result: result.clone(),
@@ -484,6 +499,30 @@ impl DeterministicWorkflow {
             return Err(ReviewPolicyError::ReviewVerifierSecretUnavailable);
         }
         Ok(secret)
+    }
+
+    fn prune_review_claim_replays(&mut self) {
+        let now = self.now;
+        self.review_claim_replays
+            .retain(|_, replay| now < replay.result.expires_at);
+    }
+
+    fn review_claim_replay_is_active(
+        &self,
+        replay: &StoredReviewClaim,
+        idempotency_key: &str,
+        reviewer: &ReviewerProfile,
+        source_lineage: &SourceActorLineage,
+    ) -> bool {
+        self.review_claim.as_ref().is_some_and(|claim| {
+            claim.active
+                && !claim.is_expired(self.now)
+                && claim.task_id == replay.task_id
+                && claim.lease_id == replay.lease_id
+                && claim.idempotency_key == idempotency_key
+                && &claim.reviewer == reviewer
+                && &claim.source_lineage == source_lineage
+        })
     }
 }
 
@@ -586,6 +625,7 @@ struct StoredReviewSubmission {
     review_task_id: ReviewTaskId,
     lease_id: LeaseId,
     claim_idempotency_key: String,
+    claim_expires_at: u64,
     idempotency_key: String,
     submission_digest: String,
     result: ReviewSubmissionResult,
@@ -594,19 +634,22 @@ struct StoredReviewSubmission {
 fn derive_review_claim_token(
     lease_id: &LeaseId,
     claim_idempotency_key: &str,
+    expires_at: u64,
     review_claim_secret: &str,
 ) -> String {
     digest_hex(format!(
-        "lessonforge-review-claim-token-v2\0{}\0{}\0{}",
+        "lessonforge-review-claim-token-v3\0{}\0{}\0{}\0{}",
         review_claim_secret,
         lease_id.as_str(),
-        claim_idempotency_key
+        claim_idempotency_key,
+        expires_at
     ))
 }
 
 fn review_claim_token_matches(
     lease_id: &LeaseId,
     claim_idempotency_key: &str,
+    expires_at: u64,
     claim_token: &str,
     review_claim_secret: &str,
 ) -> bool {
@@ -614,7 +657,13 @@ fn review_claim_token_matches(
         return false;
     }
     constant_time_eq(
-        derive_review_claim_token(lease_id, claim_idempotency_key, review_claim_secret).as_bytes(),
+        derive_review_claim_token(
+            lease_id,
+            claim_idempotency_key,
+            expires_at,
+            review_claim_secret,
+        )
+        .as_bytes(),
         claim_token.as_bytes(),
     )
 }

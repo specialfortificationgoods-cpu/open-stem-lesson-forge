@@ -1620,7 +1620,8 @@ pub fn unsigned_payload_canonical_bytes<T: Serialize>(
     report: &T,
 ) -> Result<Vec<u8>, CodeRepairPolicyError> {
     let value = unsigned_payload_value(report)?;
-    serde_jcs::to_vec(&value).map_err(|_| CodeRepairPolicyError::UnsignedPayloadBuildFailed)
+    serde_json_canonicalizer::to_vec(&value)
+        .map_err(|_| CodeRepairPolicyError::UnsignedPayloadBuildFailed)
 }
 
 fn validate_required_checks(

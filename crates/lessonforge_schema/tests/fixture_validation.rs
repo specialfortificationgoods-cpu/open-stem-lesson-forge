@@ -569,6 +569,16 @@ fn fixture_set_rejects_schema_and_example_drift() -> Result<(), Box<dyn Error>> 
         let code = fixture_error_after_schema_mutation("request.schema.json", *mutate)?;
         assert_eq!(code, "schema_compile_failed");
     }
+
+    let empty_closed_object_error =
+        fixture_error_after_schema_mutation("proposed_task_graph.schema.json", |schema| {
+            schema["properties"]["source_request_summary"] =
+                json!({ "type": "object", "additionalProperties": false });
+        })?;
+    assert_eq!(
+        empty_closed_object_error,
+        "fixture_schema_validation_failed"
+    );
     Ok(())
 }
 

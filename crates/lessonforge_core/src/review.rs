@@ -428,10 +428,7 @@ fn source_context_can_promote(
     proposal_state: ProposedTaskGraphState,
 ) -> bool {
     request_state == RequestState::MachineValidated
-        && !matches!(
-            proposal_state,
-            ProposedTaskGraphState::Quarantined | ProposedTaskGraphState::Superseded
-        )
+        && proposal_state == ProposedTaskGraphState::Promoted
 }
 
 pub fn derive_public_label(input: ArtifactPublicationInput) -> Option<PublicArtifactLabel> {

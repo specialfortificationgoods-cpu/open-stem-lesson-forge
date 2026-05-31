@@ -870,6 +870,18 @@ fn review_submission_rejects_quarantined_or_superseded_parent_context() -> Resul
             proposal_state: ProposedTaskGraphState::Superseded,
             ..review_claim_context(reviewer.clone())?
         },
+        ReviewClaimContext {
+            proposal_state: ProposedTaskGraphState::SchemaPolicyValidated,
+            ..review_claim_context(reviewer.clone())?
+        },
+        ReviewClaimContext {
+            proposal_state: ProposedTaskGraphState::VerificationRequired,
+            ..review_claim_context(reviewer.clone())?
+        },
+        ReviewClaimContext {
+            proposal_state: ProposedTaskGraphState::VerifiedForMvpPromotion,
+            ..review_claim_context(reviewer.clone())?
+        },
     ] {
         let result = submit_review(
             create_review_task(review_context()?)?,

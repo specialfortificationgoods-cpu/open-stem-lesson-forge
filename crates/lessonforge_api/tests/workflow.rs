@@ -613,21 +613,21 @@ fn api_workflow_review_rejects_expired_claim_and_separator_ambiguous_changed_rep
     let Some(new_claim_token) = new_claim.claim_token else {
         return Err("second claim should return token".into());
     };
-    let expired_claim_replay = workflow.claim_review_task(
-        task.review_task_id.clone(),
-        LeaseId::try_from("lease_review_energy_001")?,
-        "review-claim-001",
-        reviewer(
-            "actor_reviewer_001",
-            "operator_reviewer",
-            "conflict_reviewer",
-        )?,
-        source_lineage()?,
-    )?;
-    assert_eq!(expired_claim_replay.lease_id, claim.lease_id);
-    assert_eq!(expired_claim_replay.expires_at, claim.expires_at);
-    assert!(!expired_claim_replay.claim_token_returned);
-    assert!(expired_claim_replay.claim_token.is_none());
+    assert!(
+        workflow
+            .claim_review_task(
+                task.review_task_id.clone(),
+                LeaseId::try_from("lease_review_energy_001")?,
+                "review-claim-001",
+                reviewer(
+                    "actor_reviewer_001",
+                    "operator_reviewer",
+                    "conflict_reviewer",
+                )?,
+                source_lineage()?,
+            )
+            .is_err()
+    );
     let first_submission = submission_with_single_note("worksheet|line1", "typo");
     workflow.submit_human_review(
         task.review_task_id.clone(),
@@ -674,7 +674,7 @@ fn api_workflow_review_claim_expiry_saturates_at_u64_max() -> Result<(), Box<dyn
 }
 
 #[test]
-fn api_workflow_review_claim_replays_are_not_evicted() -> Result<(), Box<dyn Error>> {
+fn api_workflow_review_claim_replays_prune_after_expiry() -> Result<(), Box<dyn Error>> {
     let mut workflow = test_workflow();
     workflow.set_now(1);
     let task = workflow.open_review_task(review_context()?)?;
@@ -714,9 +714,67 @@ fn api_workflow_review_claim_replays_are_not_evicted() -> Result<(), Box<dyn Err
     )?;
 
     assert_eq!(replay.lease_id, first_claim.lease_id);
-    assert_eq!(replay.expires_at, first_claim.expires_at);
-    assert!(!replay.claim_token_returned);
-    assert!(replay.claim_token.is_none());
+    assert!(replay.expires_at > first_claim.expires_at);
+    assert!(replay.claim_token_returned);
+    assert!(replay.claim_token.is_some());
+    Ok(())
+}
+
+#[test]
+fn api_workflow_reused_lease_and_claim_key_do_not_resurrect_expired_token()
+-> Result<(), Box<dyn Error>> {
+    let mut workflow = test_workflow();
+    workflow.set_now(10);
+    let task = workflow.open_review_task(review_context()?)?;
+    let claim = workflow.claim_review_task(
+        task.review_task_id.clone(),
+        LeaseId::try_from("lease_review_energy_001")?,
+        "review-claim-001",
+        reviewer(
+            "actor_reviewer_001",
+            "operator_reviewer",
+            "conflict_reviewer",
+        )?,
+        source_lineage()?,
+    )?;
+    let Some(expired_token) = claim.claim_token else {
+        return Err("first claim should return token".into());
+    };
+
+    workflow.set_now(claim.expires_at + 1);
+    let replacement = workflow.claim_review_task(
+        task.review_task_id.clone(),
+        LeaseId::try_from("lease_review_energy_001")?,
+        "review-claim-001",
+        reviewer(
+            "actor_reviewer_001",
+            "operator_reviewer",
+            "conflict_reviewer",
+        )?,
+        source_lineage()?,
+    )?;
+    let Some(replacement_token) = replacement.claim_token.clone() else {
+        return Err("replacement claim should return token".into());
+    };
+    assert_ne!(expired_token, replacement_token);
+    assert!(
+        workflow
+            .submit_human_review(
+                task.review_task_id.clone(),
+                LeaseId::try_from("lease_review_energy_001")?,
+                &expired_token,
+                "review-submit-001",
+                ReviewSubmission::approved_no_findings(),
+            )
+            .is_err()
+    );
+    workflow.submit_human_review(
+        task.review_task_id,
+        LeaseId::try_from("lease_review_energy_001")?,
+        &replacement_token,
+        "review-submit-001",
+        ReviewSubmission::approved_no_findings(),
+    )?;
     Ok(())
 }
 

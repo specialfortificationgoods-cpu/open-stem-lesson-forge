@@ -330,7 +330,8 @@ pub fn compute_artifact_digests(
         runner_actor_id: &context.runner_actor_id,
         work_packet_id: &context.generation_work_packet_id,
     };
-    let bytes = serde_jcs::to_vec(&canonical).map_err(|_| ValidatorError::DigestUnavailable)?;
+    let bytes = serde_json_canonicalizer::to_vec(&canonical)
+        .map_err(|_| ValidatorError::DigestUnavailable)?;
     Ok(ArtifactDigestSet {
         file_digests,
         bundle_digest: sha256_hex(&bytes),

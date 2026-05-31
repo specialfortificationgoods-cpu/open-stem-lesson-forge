@@ -438,7 +438,7 @@ fn required_desired_artifacts(
         if !matches!(
             value.as_str(),
             "worksheet" | "answer_key" | "python_checker" | "teacher_notes"
-        ) || !seen.insert(value)
+        ) || !seen.insert(value.clone())
         {
             return Err(RequestWorkflowError::Rejected {
                 reason: IntakeRejectionReason::InvalidField,
@@ -446,7 +446,20 @@ fn required_desired_artifacts(
             });
         }
     }
-    Ok(values)
+    let canonical = vec![
+        "worksheet".to_owned(),
+        "answer_key".to_owned(),
+        "python_checker".to_owned(),
+        "teacher_notes".to_owned(),
+    ];
+    let expected = canonical.iter().cloned().collect::<BTreeSet<_>>();
+    if seen != expected {
+        return Err(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::InvalidField,
+            field_path: "/desired_artifacts".to_owned(),
+        });
+    }
+    Ok(canonical)
 }
 
 fn optional_constraints(

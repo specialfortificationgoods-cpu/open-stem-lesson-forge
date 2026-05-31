@@ -234,16 +234,36 @@ fn scan_workspace(root: &Path) -> Result<Vec<Finding>, String> {
 fn fail_closed_if_required_paths_missing(root: &Path) -> Result<(), String> {
     for relative in CENTRAL_PATHS {
         let path = root.join(relative);
-        if !path.exists() {
+        let metadata = fs::symlink_metadata(&path).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                format!(
+                    "required central path missing for no-inference scan: {}",
+                    path.display()
+                )
+            } else {
+                error.to_string()
+            }
+        })?;
+        if metadata.file_type().is_symlink() {
             return Err(format!(
-                "required central path missing for no-inference scan: {}",
+                "required central path is a symlink for no-inference scan: {}",
                 path.display()
             ));
         }
         let manifest = path.join("Cargo.toml");
-        if !manifest.exists() {
+        let manifest_metadata = fs::symlink_metadata(&manifest).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                format!(
+                    "required central manifest missing for no-inference scan: {}",
+                    manifest.display()
+                )
+            } else {
+                error.to_string()
+            }
+        })?;
+        if manifest_metadata.file_type().is_symlink() {
             return Err(format!(
-                "required central manifest missing for no-inference scan: {}",
+                "required central manifest is a symlink for no-inference scan: {}",
                 manifest.display()
             ));
         }
@@ -267,6 +287,7 @@ fn central_dependency_scan_targets(
     let mut required_package_ids = BTreeSet::<PackageId>::new();
     for (package_name, relative_path) in REQUIRED_CENTRAL_PACKAGES {
         let expected_manifest = root.join(relative_path).join("Cargo.toml");
+        reject_symlinked_required_manifest(&expected_manifest)?;
         let expected_manifest = expected_manifest
             .canonicalize()
             .map_err(|error| error.to_string())?;
@@ -342,6 +363,31 @@ fn central_dependency_scan_targets(
         );
     }
     Ok(packages)
+}
+
+fn reject_symlinked_required_manifest(manifest: &Path) -> Result<(), String> {
+    let package_root = manifest.parent().ok_or_else(|| {
+        format!(
+            "required central manifest path has no parent for no-inference scan: {}",
+            manifest.display()
+        )
+    })?;
+    let package_root_metadata =
+        fs::symlink_metadata(package_root).map_err(|error| error.to_string())?;
+    if package_root_metadata.file_type().is_symlink() {
+        return Err(format!(
+            "required central package path is a symlink for no-inference scan: {}",
+            package_root.display()
+        ));
+    }
+    let manifest_metadata = fs::symlink_metadata(manifest).map_err(|error| error.to_string())?;
+    if manifest_metadata.file_type().is_symlink() {
+        return Err(format!(
+            "required central manifest is a symlink for no-inference scan: {}",
+            manifest.display()
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone)]

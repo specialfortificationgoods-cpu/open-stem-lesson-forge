@@ -98,6 +98,10 @@ fn request_transitions_follow_spec_005_guards() {
         RequestState::PlanProposed.transition(RequestTransition::PromotionAccepted),
         Ok(RequestState::Decomposed)
     );
+    assert_eq!(
+        RequestState::PeerReviewed.transition(RequestTransition::Deprecate),
+        Ok(RequestState::Deprecated)
+    );
 
     assert!(
         RequestState::Requested

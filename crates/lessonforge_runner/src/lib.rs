@@ -925,7 +925,8 @@ fn compute_runner_bundle_digest(
         runner_actor_id: &context.runner_actor_id,
         work_packet_id: &context.work_packet_id,
     };
-    let bytes = serde_jcs::to_vec(&canonical).map_err(|_| RunnerOutputError::OutputUnavailable)?;
+    let bytes = serde_json_canonicalizer::to_vec(&canonical)
+        .map_err(|_| RunnerOutputError::OutputUnavailable)?;
     Ok(sha256_hex(&bytes))
 }
 
@@ -1153,7 +1154,7 @@ fn self_test_attestation_payload_canonical_bytes(
         self_test_status: &report.self_test_status,
         created_at: &report.created_at,
     };
-    serde_jcs::to_vec(&payload).map_err(|_| RunnerOutputError::OutputUnavailable)
+    serde_json_canonicalizer::to_vec(&payload).map_err(|_| RunnerOutputError::OutputUnavailable)
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {

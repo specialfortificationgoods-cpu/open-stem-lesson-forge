@@ -217,7 +217,8 @@ impl RequestState {
                 | Self::PlanProposed
                 | Self::Decomposed
                 | Self::ArtifactDrafted
-                | Self::MachineValidated,
+                | Self::MachineValidated
+                | Self::PeerReviewed,
                 RequestTransition::Deprecate,
             ) => Ok(Self::Deprecated),
             _ => Err(transition_error("request", self.as_str(), action.as_str())),
