@@ -1,6 +1,6 @@
 use lessonforge_runner::{
     DummyGenerationContext, DummyPlanningContext, DummyVerificationContext, RunnerConfig,
-    RunnerMode, dummy_plan_verification, dummy_proposed_task_graph,
+    RunnerMode, capability_summary, dummy_plan_verification, dummy_proposed_task_graph,
     dummy_request_moderation_report, validate_runner_config, write_dummy_artifact_bundle,
 };
 use lessonforge_validator::{
@@ -294,22 +294,40 @@ fn run_full_mvp_smoke(root: &Path) -> Result<(), String> {
         .map_err(|_| "dummy_moderation_schema_failed")?;
 
     let planner = validated_dummy(
-        "runner_dummy_planner_001",
+        "actor_planner_001",
         "Dummy planner",
         RunnerMode::DummyPlanner,
     )?;
+    let planner_summary =
+        capability_summary(&planner).map_err(|_| "dummy_planner_summary_failed")?;
     let graph = dummy_proposed_task_graph(&planner, &DummyPlanningContext::mvp_fixture())
         .map_err(|_| "dummy_graph_output_failed")?;
+    if graph
+        .get("planner_runner_id")
+        .and_then(|value| value.as_str())
+        != Some(planner_summary.runner_id.as_str())
+    {
+        return Err("dummy_graph_runner_identity_mismatch".to_owned());
+    }
     lessonforge_schema::validate_proposed_task_graph(&graph)
         .map_err(|_| "dummy_graph_schema_failed")?;
 
     let verifier = validated_dummy(
-        "runner_dummy_verifier_001",
+        "actor_verifier_001",
         "Dummy verifier",
         RunnerMode::DummyPlanVerifier,
     )?;
+    let verifier_summary =
+        capability_summary(&verifier).map_err(|_| "dummy_verifier_summary_failed")?;
     let verification = dummy_plan_verification(&verifier, &DummyVerificationContext::mvp_fixture())
         .map_err(|_| "dummy_verification_output_failed")?;
+    if verification
+        .get("verifier_runner_id")
+        .and_then(|value| value.as_str())
+        != Some(verifier_summary.runner_id.as_str())
+    {
+        return Err("dummy_verification_runner_identity_mismatch".to_owned());
+    }
     lessonforge_schema::validate_plan_verification(&verification)
         .map_err(|_| "dummy_verification_schema_failed")?;
 

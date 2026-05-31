@@ -69,7 +69,7 @@ MVP config shape:
 
 ```toml
 [runner]
-runner_id = "runner_dummy_planner_001"
+runner_id = "actor_planner_001"
 public_name = "Dummy Planner"
 mode = "dummy_planner"
 scope_id = "scope_default"
@@ -225,8 +225,8 @@ MVP dummy modes do not require provider credentials.
 
 The MVP uses distinct runner actor IDs for planner, verifier, and generator roles:
 
-- `runner_dummy_planner_001`
-- `runner_dummy_verifier_001`
+- `actor_planner_001`
+- `actor_verifier_001`
 - `runner_dummy_generator_001`
 
 One local binary may support all dummy modes, but each running configuration must bind to exactly one runner actor identity and one active mode. The verifier actor must differ from the planner actor for plan verification. The generator actor does not gain reviewer or verifier authority.
@@ -237,7 +237,7 @@ The runner may submit or expose this central-safe summary:
 
 ```json
 {
-  "runner_id": "runner_dummy_planner_001",
+  "runner_id": "actor_planner_001",
   "runner_public_name": "Dummy Planner",
   "capability_schema_version": "1.0",
   "capabilities": {

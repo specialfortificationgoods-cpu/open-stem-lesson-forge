@@ -470,6 +470,7 @@ fn intake_context() -> Result<IntakeContext, Box<dyn Error>> {
     Ok(IntakeContext {
         request_id: RequestId::try_from("req_energy_001")?,
         moderation_task_id: RequestModerationTaskId::try_from("rmtask_energy_001")?,
+        planning_task_id: PlanningTaskId::try_from("ptask_energy_001")?,
         scope_id: "scope_default".to_owned(),
         created_by_actor_id: ActorId::try_from("actor_teacher_001")?,
         now: "2026-05-30T00:00:00Z".to_owned(),

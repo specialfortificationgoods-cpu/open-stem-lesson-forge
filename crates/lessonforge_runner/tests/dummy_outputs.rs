@@ -28,7 +28,7 @@ fn dummy_moderator_planner_and_verifier_emit_schema_valid_safe_json() -> Result<
     assert!(moderation.get("claim_token").is_none());
 
     let planner = validate_runner_config(&dummy_config(
-        "runner_dummy_planner_001",
+        "actor_planner_001",
         "Dummy Planner",
         RunnerMode::DummyPlanner,
     ))?;
@@ -37,7 +37,7 @@ fn dummy_moderator_planner_and_verifier_emit_schema_valid_safe_json() -> Result<
     assert_safe_runner_output(&proposal.to_string());
 
     let verifier = validate_runner_config(&dummy_config(
-        "runner_dummy_verifier_001",
+        "actor_verifier_001",
         "Dummy Verifier",
         RunnerMode::DummyPlanVerifier,
     ))?;
@@ -261,7 +261,7 @@ fn dummy_generator_requires_valid_attestation_config() -> Result<(), Box<dyn Err
     }
 
     let mut planner_with_key = dummy_config(
-        "runner_dummy_planner_001",
+        "actor_planner_001",
         "Dummy Planner",
         RunnerMode::DummyPlanner,
     );
@@ -283,7 +283,7 @@ fn dummy_generator_requires_valid_attestation_config() -> Result<(), Box<dyn Err
 fn dummy_generator_rejects_wrong_mode_and_path_traversal() -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
     let planner = validate_runner_config(&dummy_config_with_workspace(
-        "runner_dummy_planner_001",
+        "actor_planner_001",
         "Dummy Planner",
         RunnerMode::DummyPlanner,
         temp.path(),

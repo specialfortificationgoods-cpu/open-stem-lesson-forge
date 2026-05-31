@@ -169,7 +169,7 @@ Implement specs `006`, `001` request fixture, and moderation gate:
 
 **Files:**
 - `crates/lessonforge_core/src/graph.rs`
-- `crates/lessonforge_core/src/promotion.rs`
+- `crates/lessonforge_core/src/planning.rs`
 - schemas and examples for proposed graphs and plan verification.
 
 Implement spec `007`:

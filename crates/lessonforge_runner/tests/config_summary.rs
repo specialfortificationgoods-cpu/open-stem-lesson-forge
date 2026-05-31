@@ -12,7 +12,7 @@ fn dummy_planner_config_validates_and_emits_redacted_summary() -> Result<(), Box
     let summary = capability_summary(&validated)?;
     let rendered = format!("{summary:?}");
 
-    assert_eq!(summary.runner_id, "runner_dummy_planner_001");
+    assert_eq!(summary.runner_id, "actor_planner_001");
     assert_eq!(summary.capabilities.phases, vec!["request_normalization"]);
     assert_eq!(summary.capabilities.task_types, vec!["propose_task_graph"]);
     assert_eq!(summary.capabilities.tools, vec!["structured_json_output"]);
@@ -217,7 +217,7 @@ fn dummy_planner_config() -> lessonforge_runner::RunnerConfig {
 
 fn dummy_planner_config_with_base(base: &str) -> lessonforge_runner::RunnerConfig {
     lessonforge_runner::RunnerConfig::dummy(
-        "runner_dummy_planner_001",
+        "actor_planner_001",
         "Dummy Planner",
         RunnerMode::DummyPlanner,
         base,

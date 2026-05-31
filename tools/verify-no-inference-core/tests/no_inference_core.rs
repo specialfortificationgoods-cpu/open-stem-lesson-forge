@@ -781,6 +781,116 @@ fn forbidden_dependency_graph_name_without_text_marker_fails_scan() -> Result<()
 }
 
 #[test]
+fn target_specific_forbidden_dependency_name_fails_scan() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    write_workspace_manifest(
+        temp.path(),
+        &[
+            "lessonforge_core",
+            "lessonforge_api",
+            "lessonforge_schema",
+            "lessonforge_validator",
+            "wasmtime",
+        ],
+    )?;
+    write_target_dependency(temp.path(), "lessonforge_api", "wasmtime", "../wasmtime")?;
+
+    let output = Command::new(verifier())
+        .arg("--root")
+        .arg(temp.path())
+        .output()?;
+
+    assert!(
+        !output.status.success(),
+        "expected target-specific forbidden dependency graph package to fail\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("wasmtime"),
+        "stderr should identify forbidden dependency graph package"
+    );
+    Ok(())
+}
+
+#[test]
+fn transitive_package_dev_dependency_is_not_scanned_as_central_runtime()
+-> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    write_workspace_manifest(
+        temp.path(),
+        &[
+            "lessonforge_core",
+            "lessonforge_api",
+            "lessonforge_schema",
+            "lessonforge_validator",
+            "benign_runtime",
+            "wasmtime",
+        ],
+    )?;
+    write_dependency(
+        temp.path(),
+        "lessonforge_api",
+        "benign_runtime",
+        "../benign_runtime",
+    )?;
+    write_dev_dependency(temp.path(), "benign_runtime", "wasmtime", "../wasmtime")?;
+
+    let output = Command::new(verifier())
+        .arg("--root")
+        .arg(temp.path())
+        .output()?;
+
+    assert!(
+        output.status.success(),
+        "expected transitive package dev-dependency to be ignored\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(())
+}
+
+#[test]
+fn required_central_package_dev_dependency_is_scanned_even_when_reached_transitively()
+-> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    write_workspace_manifest(
+        temp.path(),
+        &[
+            "lessonforge_core",
+            "lessonforge_api",
+            "lessonforge_schema",
+            "lessonforge_validator",
+            "wasmtime",
+        ],
+    )?;
+    write_dependency(
+        temp.path(),
+        "lessonforge_validator",
+        "lessonforge_core",
+        "../lessonforge_core",
+    )?;
+    write_dev_dependency(temp.path(), "lessonforge_core", "wasmtime", "../wasmtime")?;
+
+    let output = Command::new(verifier())
+        .arg("--root")
+        .arg(temp.path())
+        .output()?;
+
+    assert!(
+        !output.status.success(),
+        "expected required central crate dev-dependency to fail even after transitive traversal\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("wasmtime"),
+        "stderr should identify forbidden central dev-dependency"
+    );
+    Ok(())
+}
+
+#[test]
 fn forbidden_dependency_feature_without_text_marker_fails_scan() -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
     write_workspace_manifest(
@@ -881,6 +991,36 @@ fn write_dependency_with_features(
         root.join(format!("crates/{crate_name}/Cargo.toml")),
         format!(
             "[package]\nname = \"{crate_name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\n{dependency_name} = {{ path = \"{dependency_path}\", features = [{feature_list}] }}\n"
+        ),
+    )?;
+    Ok(())
+}
+
+fn write_dev_dependency(
+    root: &std::path::Path,
+    crate_name: &str,
+    dependency_name: &str,
+    dependency_path: &str,
+) -> Result<(), Box<dyn Error>> {
+    fs::write(
+        root.join(format!("crates/{crate_name}/Cargo.toml")),
+        format!(
+            "[package]\nname = \"{crate_name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dev-dependencies]\n{dependency_name} = {{ path = \"{dependency_path}\" }}\n"
+        ),
+    )?;
+    Ok(())
+}
+
+fn write_target_dependency(
+    root: &std::path::Path,
+    crate_name: &str,
+    dependency_name: &str,
+    dependency_path: &str,
+) -> Result<(), Box<dyn Error>> {
+    fs::write(
+        root.join(format!("crates/{crate_name}/Cargo.toml")),
+        format!(
+            "[package]\nname = \"{crate_name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[target.'cfg(any())'.dependencies]\n{dependency_name} = {{ path = \"{dependency_path}\" }}\n"
         ),
     )?;
     Ok(())

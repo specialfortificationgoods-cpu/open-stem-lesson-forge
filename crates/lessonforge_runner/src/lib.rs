@@ -650,7 +650,7 @@ pub fn dummy_plan_verification(
         "verification_id": "pverify_energy_001_a",
         "proposal_id": context.proposal_id,
         "verification_task_id": context.verification_task_id,
-        "verifier_runner_id": "runner_dummy_verifier_001",
+        "verifier_runner_id": "actor_verifier_001",
         "verification_type": "plan_schema_policy_cross_check",
         "status": "submitted",
         "outcome": "no_blocking_findings",

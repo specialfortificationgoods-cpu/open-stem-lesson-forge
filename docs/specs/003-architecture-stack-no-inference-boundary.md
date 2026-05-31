@@ -93,69 +93,58 @@ crates/
       lib.rs
       ids.rs
       state.rs
-      policy.rs
       error.rs
+      request.rs
+      moderation.rs
+      planning.rs
+      graph.rs
+      review.rs
+      code_repair.rs
+      validation/
+        mod.rs
+        pii_detection.rs
   lessonforge_api/
     src/
       lib.rs
-      main.rs
-      routes/
-      storage/
-      error.rs
+      workflow.rs
   lessonforge_runner/
     src/
       lib.rs
-      main.rs
-      config.rs
-      capability.rs
-      sandbox.rs
-      moderation.rs
-      dummy/
-      error.rs
   lessonforge_validator/
     src/
       lib.rs
-      bundle.rs
-      checks/
-      report.rs
-      error.rs
   lessonforge_schema/
     src/
       lib.rs
-      validate.rs
-      fixtures.rs
 
 tools/
+  lessonforge-e2e/
+    src/main.rs
   verify-no-inference-core/
+    src/main.rs
+  verify-no-leak-fixtures/
     src/main.rs
   verify-schema-fixtures/
     src/main.rs
 
 schemas/
   request.schema.json
-  planning_task.schema.json
+  request_moderation_report.schema.json
   proposed_task_graph.schema.json
   plan_verification.schema.json
-  work_packet.schema.json
   artifact_manifest.schema.json
-  validation_report.schema.json
-  review.schema.json
 
 examples/
-  requests/
-  planning_tasks/
-  proposed_task_graphs/
-  plan_verifications/
-  work_packets/
-  artifact_bundles/
-  validation_reports/
-  reviews/
+  mvp/
+    request.valid.json
+    request_moderation_report.valid.json
+    proposed_task_graph.valid.json
+    plan_verification.valid.json
+    artifact_manifest.valid.json
 
 docs/
   specs/
-  deterministic_core.md
-  runner_security.md
-  policy_posture.md
+  superpowers/plans/
 ```
 
 ## Crate Responsibilities

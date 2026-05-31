@@ -1,7 +1,7 @@
 use lessonforge_api::workflow::DeterministicWorkflow;
 use lessonforge_core::ids::{
-    ActorId, ArtifactId, LeaseId, RequestId, RequestModerationReportId, RequestModerationTaskId,
-    ReviewTaskId, WorkPacketId,
+    ActorId, ArtifactId, LeaseId, PlanningTaskId, RequestId, RequestModerationReportId,
+    RequestModerationTaskId, ReviewTaskId, WorkPacketId,
 };
 use lessonforge_core::moderation::{
     ModerationCategory, ModerationDecision, ModerationKind, ModerationReportSubmission,
@@ -68,6 +68,10 @@ fn api_workflow_composes_intake_and_moderation_deterministically() -> Result<(),
     let Some(planning_task) = moderation.planning_task else {
         return Err("planning task should be created".into());
     };
+    assert_eq!(
+        planning_task.planning_task_id,
+        PlanningTaskId::try_from("ptask_server_allocated_777")?
+    );
     assert_eq!(planning_task.state, PlanningTaskState::Open);
     assert_eq!(workflow.planning_task_count(), 1);
 
@@ -696,6 +700,7 @@ fn intake_context() -> Result<IntakeContext, Box<dyn Error>> {
     Ok(IntakeContext {
         request_id: RequestId::try_from("req_energy_001")?,
         moderation_task_id: RequestModerationTaskId::try_from("rmtask_energy_001")?,
+        planning_task_id: PlanningTaskId::try_from("ptask_server_allocated_777")?,
         scope_id: "scope_default".to_owned(),
         created_by_actor_id: ActorId::try_from("actor_teacher_001")?,
         now: "2026-05-30T00:00:00Z".to_owned(),

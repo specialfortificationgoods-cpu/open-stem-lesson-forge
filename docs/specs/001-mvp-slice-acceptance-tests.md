@@ -226,7 +226,7 @@ The dummy planner runner submits:
   "proposal_id": "plan_energy_001_a",
   "request_id": "req_energy_001",
   "planning_task_id": "ptask_energy_001",
-  "planner_runner_id": "runner_dummy_planner_001",
+  "planner_runner_id": "actor_planner_001",
   "schema_version": "1.0",
   "status": "proposed",
   "source_request_summary": {
@@ -386,7 +386,7 @@ The dummy verifier runner submits a structured verification report:
   "verification_id": "pverify_energy_001_a",
   "proposal_id": "plan_energy_001_a",
   "verification_task_id": "pvtask_energy_001_a",
-  "verifier_runner_id": "runner_dummy_verifier_001",
+  "verifier_runner_id": "actor_verifier_001",
   "verification_type": "plan_schema_policy_cross_check",
   "status": "submitted",
   "outcome": "no_blocking_findings",

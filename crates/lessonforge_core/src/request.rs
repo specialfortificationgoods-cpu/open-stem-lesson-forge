@@ -66,6 +66,7 @@ pub enum RequestWorkflowError {
 pub struct IntakeContext {
     pub request_id: RequestId,
     pub moderation_task_id: RequestModerationTaskId,
+    pub planning_task_id: PlanningTaskId,
     pub scope_id: String,
     pub created_by_actor_id: ActorId,
     pub now: String,

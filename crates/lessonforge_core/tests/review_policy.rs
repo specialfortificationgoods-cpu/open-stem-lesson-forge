@@ -537,6 +537,7 @@ fn finding_policy_rejects_invalid_severity_unsafe_text_and_laundered_blocking_fl
         "Charlie Chen: 90%",
         "Charlie Li: 90/100",
         "Quiz score % 85",
+        "café score 90/100",
     ] {
         let mut unsafe_path = ReviewSubmission::approved_no_findings();
         unsafe_path.findings = vec![FindingInput {
@@ -585,6 +586,7 @@ fn finding_policy_rejects_invalid_severity_unsafe_text_and_laundered_blocking_fl
         "Use ISBN 0131103628 as a source note",
         "Use EAN 400 638 1333931 as an example identifier",
         "Compute 1+23456789 using mental math",
+        "Compare 1/2 and 3/4 fractions",
     ] {
         let mut safe_numeric_text = ReviewSubmission::approved_no_findings();
         safe_numeric_text.findings = vec![FindingInput {

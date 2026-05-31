@@ -2,9 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
-use cargo_metadata::{FeatureName, Metadata, MetadataCommand, Package, PackageId};
+use cargo_metadata::{DependencyKind, FeatureName, Metadata, MetadataCommand, Package, PackageId};
 
 const REQUIRED_CENTRAL_PACKAGES: &[(&str, &str)] = &[
     ("lessonforge_core", "crates/lessonforge_core"),
@@ -209,9 +208,9 @@ fn scan_workspace(root: &Path) -> Result<Vec<Finding>, String> {
     let metadata = workspace_metadata(root)?;
     let package_scan_targets = central_dependency_scan_targets(root, &metadata, &mut findings)?;
     scan_package_metadata(&package_scan_targets, &mut findings)?;
-    for package in package_scan_targets.values() {
-        if is_path_dependency_package(package) {
-            let package_root = package_root(package)?;
+    for target in package_scan_targets.values() {
+        if is_path_dependency_package(&target.package) {
+            let package_root = package_root(&target.package)?;
             scan_path(&package_root, &mut findings)?;
             scan_package_data_prompt_paths(&package_root, &mut findings)?;
         }
@@ -253,40 +252,19 @@ fn fail_closed_if_required_paths_missing(root: &Path) -> Result<(), String> {
 }
 
 fn workspace_metadata(root: &Path) -> Result<Metadata, String> {
-    let host = rustc_host_triple()?;
     MetadataCommand::new()
         .manifest_path(root.join("Cargo.toml"))
-        .other_options(vec!["--filter-platform".to_owned(), host])
         .exec()
         .map_err(|error| error.to_string())
-}
-
-fn rustc_host_triple() -> Result<String, String> {
-    let output = Command::new("rustc")
-        .arg("-vV")
-        .output()
-        .map_err(|error| format!("failed to execute rustc -vV: {error}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "rustc -vV failed with status {}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    stdout
-        .lines()
-        .find_map(|line| line.strip_prefix("host: "))
-        .map(str::to_owned)
-        .ok_or_else(|| "rustc -vV did not report a host triple".to_owned())
 }
 
 fn central_dependency_scan_targets(
     root: &Path,
     metadata: &Metadata,
     findings: &mut Vec<Finding>,
-) -> Result<BTreeMap<PackageId, Package>, String> {
+) -> Result<BTreeMap<PackageId, PackageScanTarget>, String> {
     let mut pending = Vec::new();
+    let mut required_package_ids = BTreeSet::<PackageId>::new();
     for (package_name, relative_path) in REQUIRED_CENTRAL_PACKAGES {
         let expected_manifest = root.join(relative_path).join("Cargo.toml");
         let expected_manifest = expected_manifest
@@ -316,15 +294,18 @@ fn central_dependency_scan_targets(
                 package.name
             ));
         }
-        pending.push(package.id.clone());
+        required_package_ids.insert(package.id.clone());
+        pending.push((package.id.clone(), true));
     }
     let resolve = metadata
         .resolve
         .as_ref()
         .ok_or_else(|| "cargo metadata did not include dependency resolution".to_owned())?;
     let mut seen = BTreeSet::<PackageId>::new();
-    let mut packages = BTreeMap::<PackageId, Package>::new();
-    while let Some(package_id) = pending.pop() {
+    let mut packages = BTreeMap::<PackageId, PackageScanTarget>::new();
+    while let Some((package_id, include_dev_dependencies)) = pending.pop() {
+        let include_dev_dependencies =
+            include_dev_dependencies || required_package_ids.contains(&package_id);
         if !seen.insert(package_id.clone()) {
             continue;
         }
@@ -335,18 +316,41 @@ fn central_dependency_scan_targets(
             .find(|node| node.id == package_id)
             .ok_or_else(|| format!("package missing from dependency graph: {package_id}"))?;
         scan_resolved_feature_values(&package, &node.features, findings)?;
-        let scan_dependency =
-            is_path_dependency_package(&package) || package_contains_forbidden_metadata(&package);
+        let scan_dependency = is_path_dependency_package(&package)
+            || package_contains_forbidden_metadata(&package, include_dev_dependencies);
         if scan_dependency {
-            packages.insert(package_id.clone(), package);
+            packages.insert(
+                package_id.clone(),
+                PackageScanTarget {
+                    package,
+                    include_dev_dependencies,
+                },
+            );
         }
 
-        pending.extend(node.dependencies.iter().cloned());
+        pending.extend(
+            node.deps
+                .iter()
+                .filter(|dependency| {
+                    include_dev_dependencies
+                        || dependency
+                            .dep_kinds
+                            .iter()
+                            .any(|kind| kind.kind != DependencyKind::Development)
+                })
+                .map(|dependency| (dependency.pkg.clone(), false)),
+        );
     }
     Ok(packages)
 }
 
-fn package_contains_forbidden_metadata(package: &Package) -> bool {
+#[derive(Debug, Clone)]
+struct PackageScanTarget {
+    package: Package,
+    include_dev_dependencies: bool,
+}
+
+fn package_contains_forbidden_metadata(package: &Package, include_dev_dependencies: bool) -> bool {
     let mut values = vec![
         package.name.to_string(),
         package.id.to_string(),
@@ -355,7 +359,9 @@ fn package_contains_forbidden_metadata(package: &Package) -> bool {
     if let Some(source) = &package.source {
         values.push(source.to_string());
     }
-    for dependency in &package.dependencies {
+    for dependency in package.dependencies.iter().filter(|dependency| {
+        include_dev_dependencies || dependency.kind != DependencyKind::Development
+    }) {
         values.push(dependency.name.clone());
         values.push(dependency.req.to_string());
         values.extend(dependency.features.iter().cloned());
@@ -369,10 +375,11 @@ fn package_contains_forbidden_metadata(package: &Package) -> bool {
 }
 
 fn scan_package_metadata(
-    packages: &BTreeMap<PackageId, Package>,
+    packages: &BTreeMap<PackageId, PackageScanTarget>,
     findings: &mut Vec<Finding>,
 ) -> Result<(), String> {
-    for package in packages.values() {
+    for target in packages.values() {
+        let package = &target.package;
         scan_metadata_value(
             &package_root(package)?.join("Cargo.toml"),
             "package metadata",
@@ -399,7 +406,9 @@ fn scan_package_metadata(
                 findings,
             );
         }
-        for dependency in &package.dependencies {
+        for dependency in package.dependencies.iter().filter(|dependency| {
+            target.include_dev_dependencies || dependency.kind != DependencyKind::Development
+        }) {
             scan_metadata_value(
                 &package_root(package)?.join("Cargo.toml"),
                 "dependency metadata",

@@ -1703,6 +1703,7 @@ fn validate_safe_message(value: &str) -> Result<(), CodeRepairPolicyError> {
         || contains_forbidden_submitted_text(value)
         || !value.chars().all(is_safe_message_char)
         || looks_like_code_snippet(value)
+        || looks_like_control_flow_snippet(value)
         || looks_like_prompt_or_command(value)
         || contains_function_call_shape(value)
         || looks_like_bare_domain(value)
@@ -1749,10 +1750,6 @@ fn contains_forbidden_submitted_text(value: &str) -> bool {
         || lower.contains("eval(")
         || lower.contains("exec(")
         || lower.contains("input(")
-        || contains_code_keyword(&lower, "return")
-        || contains_code_keyword(&lower, "while")
-        || contains_code_keyword(&lower, "for")
-        || contains_code_keyword(&lower, "if")
         || lower.contains("__")
         || lower.contains("os.")
         || lower.contains("subprocess")
@@ -1803,6 +1800,31 @@ fn looks_like_code_snippet(value: &str) -> bool {
         || lower.contains("!=")
         || lower.contains("+=")
         || lower.contains("-=")
+}
+
+fn looks_like_control_flow_snippet(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.lines().any(|line| {
+        let trimmed = line.trim_start();
+        ["if", "for", "while"].iter().any(|keyword| {
+            python_like_control_keyword_tail(trimmed, keyword)
+                .is_some_and(|tail| tail.trim_end().ends_with(':'))
+        }) || python_like_control_keyword_tail(trimmed, "return").is_some_and(|tail| {
+            tail.contains(';') || tail.contains('=') || tail.contains('(') || tail.contains('[')
+        })
+    })
+}
+
+fn python_like_control_keyword_tail<'a>(value: &'a str, keyword: &str) -> Option<&'a str> {
+    let tail = value.strip_prefix(keyword)?;
+    if tail
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    {
+        return None;
+    }
+    Some(tail)
 }
 
 fn contains_function_call_shape(value: &str) -> bool {
@@ -1919,8 +1941,10 @@ fn is_safe_evidence_word(token: &str) -> bool {
             | "filesystem"
             | "finding"
             | "forbidden"
+            | "for"
             | "function"
             | "heuristic"
+            | "if"
             | "import"
             | "invalid"
             | "maintainability"
@@ -1943,6 +1967,7 @@ fn is_safe_evidence_word(token: &str) -> bool {
             | "reflection"
             | "reported"
             | "result"
+            | "return"
             | "returned"
             | "safety"
             | "sample"

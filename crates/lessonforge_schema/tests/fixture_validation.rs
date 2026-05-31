@@ -708,7 +708,7 @@ fn valid_plan_verification() -> Value {
         "verification_id": "pverify_energy_001_a",
         "proposal_id": "plan_energy_001_a",
         "verification_task_id": "pvtask_energy_001_a",
-        "verifier_runner_id": "runner_dummy_verifier_001",
+        "verifier_runner_id": "actor_verifier_001",
         "verification_type": "plan_schema_policy_cross_check",
         "status": "submitted",
         "outcome": "no_blocking_findings",

@@ -18,7 +18,7 @@
     "verification_id": { "type": "string", "pattern": "^pverify_[a-z0-9_-]+$" },
     "proposal_id": { "const": "plan_energy_001_a" },
     "verification_task_id": { "const": "pvtask_energy_001_a" },
-    "verifier_runner_id": { "const": "runner_dummy_verifier_001" },
+    "verifier_runner_id": { "const": "actor_verifier_001" },
     "verification_type": { "const": "plan_schema_policy_cross_check" },
     "status": { "const": "submitted" },
     "outcome": { "const": "no_blocking_findings" },

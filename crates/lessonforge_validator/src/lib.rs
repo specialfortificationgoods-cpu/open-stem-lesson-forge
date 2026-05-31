@@ -28,6 +28,7 @@ const DIGEST_FILE_ORDER: [&str; 5] = [
 ];
 const MARKDOWN_FILES: [&str; 3] = ["worksheet.md", "answer_key.md", "teacher_notes.md"];
 const WHOLE_BUNDLE_MAX_BYTES: u64 = 256 * 1024;
+const MAX_LITERAL_FOR_LOOP_ITEMS: usize = 50;
 
 pub fn crate_boundary() -> &'static str {
     VALIDATOR_NAME
@@ -952,11 +953,20 @@ fn finite_literal_for_loop_tail(after_for: &str) -> bool {
     if items.len() > 256 {
         return false;
     }
-    items
+    let mut item_count = 0usize;
+    for item in items
         .split(',')
         .map(str::trim)
         .filter(|item| !item.is_empty())
-        .all(|item| valid_python_identifier(item) || valid_numeric_literal(item))
+    {
+        item_count += 1;
+        if item_count > MAX_LITERAL_FOR_LOOP_ITEMS
+            || !(valid_python_identifier(item) || valid_numeric_literal(item))
+        {
+            return false;
+        }
+    }
+    true
 }
 
 fn python_keyword_tail<'a>(value: &'a str, keyword: &str) -> Option<&'a str> {

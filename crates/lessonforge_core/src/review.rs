@@ -672,10 +672,17 @@ fn finding_is_blocking(finding_type: FindingType, severity: FindingSeverity) -> 
 }
 
 fn safe_text(value: &str) -> bool {
+    if value.is_empty()
+        || value.chars().count() > 240
+        || !value
+            .chars()
+            .all(|character| character.is_ascii() && !character.is_control())
+    {
+        return false;
+    }
+
     let lower = value.to_ascii_lowercase();
-    !value.is_empty()
-        && value.chars().count() <= 240
-        && !lower.contains("http://")
+    !lower.contains("http://")
         && !lower.contains("https://")
         && !lower.contains("/home/")
         && !lower.contains("/users/")
@@ -702,9 +709,6 @@ fn safe_text(value: &str) -> bool {
         && !contains_student_pii_marker(value, &lower)
         && !lower.contains("```")
         && !lower.contains("<script")
-        && value
-            .chars()
-            .all(|character| character.is_ascii() && !character.is_control())
 }
 
 fn contains_student_pii_marker(value: &str, lower: &str) -> bool {
@@ -717,10 +721,8 @@ fn contains_student_pii_marker(value: &str, lower: &str) -> bool {
         || lower.contains("attendance")
         || lower.contains("parent")
         || lower.contains("guardian")
-        || lower.contains("alice")
-        || lower.contains("bob")
         || contains_percent_grade_marker(value, lower)
-        || contains_grade_fraction(value)
+        || contains_grade_fraction(value, lower)
         || contains_titlecase_name_pair(value)
         || has_phone_like_number(value, lower)
 }
@@ -769,11 +771,28 @@ fn contains_titlecase_name_pair(value: &str) -> bool {
     false
 }
 
-fn contains_grade_fraction(value: &str) -> bool {
-    let chars = value.chars().collect::<Vec<_>>();
-    chars
+fn contains_grade_fraction(value: &str, lower: &str) -> bool {
+    value
+        .as_bytes()
         .windows(3)
-        .any(|window| window[0].is_ascii_digit() && window[1] == '/' && window[2].is_ascii_digit())
+        .enumerate()
+        .any(|(index, window)| {
+            window[0].is_ascii_digit()
+                && window[1] == b'/'
+                && window[2].is_ascii_digit()
+                && grade_context_near(lower, index)
+        })
+}
+
+fn grade_context_near(lower: &str, fraction_start: usize) -> bool {
+    let start = fraction_start.saturating_sub(32);
+    let end = lower.len().min(fraction_start.saturating_add(35));
+    let context = &lower[start..end];
+    [
+        "grade", "score", "scored", "points", "pts", "out of", "percent",
+    ]
+    .iter()
+    .any(|keyword| context.contains(keyword))
 }
 
 fn titlecase_word_shape(word: &str) -> bool {

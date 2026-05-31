@@ -699,6 +699,28 @@ fn critique_report_rejects_unsafe_message_text() {
 }
 
 #[test]
+fn safe_message_allows_common_english_control_words_inside_closed_vocabulary() {
+    for message in [
+        "Contract check for answer failed.",
+        "Return value mismatch.",
+        "If answer value mismatch.",
+    ] {
+        let finding = CodeCritiqueFinding {
+            finding_type: FindingType::ContractMismatch,
+            severity: FindingSeverity::Major,
+            safe_location: "checker.py:function:score_answer".to_owned(),
+            safe_message: message.to_owned(),
+            evidence_kind: EvidenceKind::SchemaCheck,
+            repair_hint_code: Some(RepairHintCode::MatchExpectedFunctionContract),
+        };
+        assert!(
+            finding.validate().is_ok(),
+            "safe closed-vocabulary message was rejected: {message}"
+        );
+    }
+}
+
+#[test]
 fn critique_report_rejects_non_checker_review_scope() {
     let report_with_extra_file = serde_json::json!({
         "critique_report_id": "crpt_1",
@@ -1105,7 +1127,7 @@ fn safe_message_rejects_short_code_markdown_json_and_stderr_shapes() {
         "if x:",
         "for x in y:",
         "while True:",
-        "return value",
+        "return value;",
     ] {
         let finding = CodeCritiqueFinding {
             finding_type: FindingType::UnsafeImport,

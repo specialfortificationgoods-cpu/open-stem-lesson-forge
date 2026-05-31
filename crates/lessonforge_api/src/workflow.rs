@@ -17,18 +17,20 @@ use lessonforge_core::state::{
     ArtifactState, Lease, ProposedTaskGraphState, RequestState, ReviewTaskState,
 };
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 #[derive(Debug, Default)]
 pub struct DeterministicWorkflow {
     request: Option<StoredRequest>,
     moderation_task_id: Option<RequestModerationTaskId>,
+    planning_task_id: Option<PlanningTaskId>,
     moderation_claim: Option<ModerationClaim>,
     moderation_outcome: Option<StoredModerationOutcome>,
     planning_tasks: Vec<PlanningTaskRecord>,
     review_task: Option<ReviewTaskRecord>,
     review_claim: Option<ReviewClaim>,
-    review_claim_replays: Vec<StoredReviewClaim>,
+    review_claim_replays: BTreeMap<ReviewClaimReplayKey, StoredReviewClaim>,
     review_submission: Option<StoredReviewSubmission>,
     review_gate_state: Option<ReviewGateState>,
     artifact_state: Option<ArtifactState>,
@@ -50,8 +52,10 @@ impl DeterministicWorkflow {
                 reason: "workflow_request_already_active",
             });
         }
+        let planning_task_id = context.planning_task_id.clone();
         let outcome = accept_request_intake(payload, context)?;
         self.moderation_task_id = Some(outcome.moderation_task.task_id.clone());
+        self.planning_task_id = Some(planning_task_id);
         self.request = Some(outcome.request.clone());
         Ok(outcome)
     }
@@ -66,6 +70,11 @@ impl DeterministicWorkflow {
         let Some(request) = &self.request else {
             return Err(RequestWorkflowError::ModerationRejected {
                 reason: "request_not_found",
+            });
+        };
+        let Some(planning_task_id) = &self.planning_task_id else {
+            return Err(RequestWorkflowError::ModerationRejected {
+                reason: "planning_task_not_found",
             });
         };
         let Some(expected_task_id) = &self.moderation_task_id else {
@@ -90,6 +99,7 @@ impl DeterministicWorkflow {
         self.moderation_claim = Some(ModerationClaim {
             request_id: request.request_id.clone(),
             task_id,
+            planning_task_id: planning_task_id.clone(),
             lease_id,
             actor_id,
             claim_token_hash: Lease::claim_token_hash(claim_token),
@@ -130,17 +140,7 @@ impl DeterministicWorkflow {
         let context = RequestModerationContext {
             request_id: claim.request_id.clone(),
             moderation_task_id: claim.task_id.clone(),
-            planning_task_id: PlanningTaskId::try_from(format!(
-                "ptask_{}",
-                claim.request_id.as_str().strip_prefix("req_").ok_or(
-                    RequestWorkflowError::ModerationRejected {
-                        reason: "planning_task_id_derivation_failed",
-                    }
-                )?
-            ))
-            .map_err(|_| RequestWorkflowError::ModerationRejected {
-                reason: "planning_task_id_derivation_failed",
-            })?,
+            planning_task_id: claim.planning_task_id.clone(),
             moderator_actor_id: claim.actor_id.clone(),
             lease_id: claim.lease_id.clone(),
             claim_token_hash: claim.claim_token_hash.clone(),
@@ -219,11 +219,12 @@ impl DeterministicWorkflow {
         }
         validate_idempotency_key(idempotency_key)?;
         self.expire_review_claim_if_needed();
-        if let Some(replay) = self.review_claim_replays.iter().find(|replay| {
-            replay.task_id == review_task_id
-                && replay.idempotency_key == idempotency_key
-                && replay.reviewer.reviewer_actor_id == reviewer.reviewer_actor_id
-        }) {
+        let replay_key = ReviewClaimReplayKey {
+            task_id: review_task_id.clone(),
+            idempotency_key: idempotency_key.to_owned(),
+            reviewer_actor_id: reviewer.reviewer_actor_id.clone(),
+        };
+        if let Some(replay) = self.review_claim_replays.get(&replay_key) {
             if replay.task_id != review_task_id
                 || replay.lease_id != lease_id
                 || replay.reviewer != reviewer
@@ -278,18 +279,20 @@ impl DeterministicWorkflow {
             active: true,
             expires_at: result.expires_at,
         });
-        self.review_claim_replays.push(StoredReviewClaim {
-            task_id: review_task_id,
-            lease_id,
-            idempotency_key: idempotency_key.to_owned(),
-            reviewer,
-            source_lineage,
-            result: ReviewClaimResult {
-                claim_token_returned: false,
-                claim_token: None,
-                ..result.clone()
+        self.review_claim_replays.insert(
+            replay_key,
+            StoredReviewClaim {
+                task_id: review_task_id,
+                lease_id,
+                reviewer,
+                source_lineage,
+                result: ReviewClaimResult {
+                    claim_token_returned: false,
+                    claim_token: None,
+                    ..result.clone()
+                },
             },
-        });
+        );
         self.review_task = Some(ReviewTaskRecord {
             state: ReviewTaskState::Claimed,
             ..task.clone()
@@ -469,6 +472,7 @@ pub struct ReviewClaimResult {
 struct ModerationClaim {
     request_id: RequestId,
     task_id: RequestModerationTaskId,
+    planning_task_id: PlanningTaskId,
     lease_id: LeaseId,
     actor_id: ActorId,
     claim_token_hash: String,
@@ -494,11 +498,17 @@ struct ReviewClaim {
     expires_at: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct ReviewClaimReplayKey {
+    task_id: ReviewTaskId,
+    idempotency_key: String,
+    reviewer_actor_id: ActorId,
+}
+
 #[derive(Debug, Clone)]
 struct StoredReviewClaim {
     task_id: ReviewTaskId,
     lease_id: LeaseId,
-    idempotency_key: String,
     reviewer: ReviewerProfile,
     source_lineage: SourceActorLineage,
     result: ReviewClaimResult,

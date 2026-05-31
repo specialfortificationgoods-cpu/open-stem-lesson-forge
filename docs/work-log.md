@@ -57,7 +57,7 @@
 - Started `003-architecture-stack-no-inference-boundary.md` as a draft with stack decision pending user approval.
 - Added a stack decision brief comparing Python/FastAPI, Rust, and hybrid, with a recommendation for Python/FastAPI MVP.
 - User approved trying a Rust MVP and suggested borrowing best practices from `clan_guild_creed`.
-- Inspected `/Users/macmini/Documents/GitHub/clan_guild_creed/AGENTS.md`, `docs/STYLE.md`, and `Cargo.toml`.
+- Inspected `clan_guild_creed/AGENTS.md`, `clan_guild_creed/docs/STYLE.md`, and `clan_guild_creed/Cargo.toml`.
 - Revised `003` to lock Rust MVP, borrow transferable Rust workspace practices from `clan_guild_creed`, and avoid game-specific Bevy/Avian3d/EGUI assumptions.
 - Dispatched `003` to deterministic-core, workflow/trust, MVP/stack, and Codex Security threat-model reviewers.
 - Initial `003` review results:
@@ -561,3 +561,7 @@
   - Final adversarial review found a planning retry-exhaustion state ambiguity; accepted it and added a closed `planning_failed` request transition paired with `PlanningTask.cancelled` for `planning_abandoned_retry_limit`.
   - CodeRabbit resubmission after push raised seven more issues. Accepted hardening for proposal execution-policy fingerprints, precise forbidden-field paths, fixture key leak scanning, lease effective expiry state, and caller/server-owned request-field wording. Rejected quarantined public-label exposure because spec `011` intentionally hides quarantined artifacts; removed the unused quarantined/draft public-label enum variants instead.
   - CodeRabbit resubmission then raised two issues. Accepted both: extracted duplicated phone-number PII detection into shared core validation code and reconciled the roadmap open-decisions section with resolved review-gate specs.
+  - CodeRabbit resubmission raised thirteen issues. Accepted stale path/spec drift cleanup, actor ID fixture consistency, direct moderation-to-planning ID binding, review-claim replay indexing, contextual review grade-fraction detection, code-repair safe-text false-positive reduction, target-independent no-inference metadata scans, and finite literal loop item caps.
+  - Verification of the target-independent no-inference scan exposed unrelated transitive package dev-dependency metadata; refined the guardrail to include all central target-specific normal/build dependencies and central dev dependencies while not treating transitive package dev-dependencies as central runtime authority.
+  - Adversarial review found follow-up drift in no-inference traversal strength, caller-authoritative moderation planning IDs, e2e runner identity binding, non-ASCII review text handling, and two documentation paths; accepted and fixed all.
+  - Rejected two suggested changes in this triage: the fixture no-leak verifier should continue failing closed on unsupported fixture entries rather than skipping non-regular or non-JSON entries, and security-related review finding types should remain blocking regardless of submitted severity because they represent deterministic safety gates.

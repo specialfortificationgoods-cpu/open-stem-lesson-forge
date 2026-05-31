@@ -402,7 +402,7 @@ pub fn validate_plan_verification(value: &Value) -> Result<(), SchemaError> {
     )?;
     require_eq(
         SchemaName::PlanVerification,
-        verification.verifier_runner_id == "runner_dummy_verifier_001",
+        verification.verifier_runner_id == "actor_verifier_001",
         "verification_runner_lineage_mismatch",
         "/verifier_runner_id",
     )?;
