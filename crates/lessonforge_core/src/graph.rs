@@ -91,6 +91,14 @@ impl ProposedTaskGraphRecord {
         self.state
     }
 
+    fn bind_rejected_lineage_to_context(&mut self, context: &GraphValidationContext) {
+        self.request_id = context.request_id.clone();
+        self.planning_task_id = context.planning_task_id.clone();
+        self.planner_actor_id = context.planner_actor_id.clone();
+        self.plan_verification_task_id = None;
+        self.mvp_policy_fingerprint = None;
+    }
+
     pub fn central_risk_level(&self) -> &str {
         &self.central_risk_level
     }
@@ -394,6 +402,7 @@ fn validate_proposed_task_graph_inner(
     }
 
     proposal.state = ProposedTaskGraphState::PolicyRejected;
+    proposal.bind_rejected_lineage_to_context(&context);
     proposal.central_risk_level = central_risk_level(&submitted);
     proposal.tasks.clear();
     Ok(GraphValidationOutcome {

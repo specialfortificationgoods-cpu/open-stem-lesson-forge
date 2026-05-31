@@ -319,6 +319,45 @@ fn continuation_rejects_continue_after_malicious_interruption() {
 }
 
 #[test]
+fn continuation_allows_malicious_task_human_triage_with_spec_reason_below_limit() {
+    let mut context = continuation_context();
+    context.interruption_reason = RepairInterruptionReason::SuspectedMaliciousTask;
+    context.automated_repair_status = AutomatedRepairLoopStatus::NeedsOperatorReview;
+    context.actor_id = "curator_1".to_owned();
+    context.actor_type = ActorType::Curator;
+    context.runner_operator_owns_interrupted_runner = false;
+
+    let mut triage = continuation_decision();
+    triage.actor_id = "curator_1".to_owned();
+    triage.outcome = ContinuationOutcome::MarkRepairBugForHumanTriage;
+    triage.safe_reason_code = RepairContinuationSafeReason::MaliciousTaskSuspectedStop;
+    triage.next_repair_continuation_index = None;
+    assert!(context.validate_decision(&triage).is_ok());
+
+    context.continuation_count = 2;
+    assert!(matches!(
+        context.validate_decision(&triage),
+        Err(lessonforge_core::code_repair::CodeRepairPolicyError::ContinuationLimitReached)
+    ));
+}
+
+#[test]
+fn continuation_allows_operator_budget_human_triage_with_generic_reason() {
+    let mut context = continuation_context();
+    context.interruption_reason = RepairInterruptionReason::RunnerOperatorBudgetExhausted;
+    context.automated_repair_status = AutomatedRepairLoopStatus::NeedsOperatorReview;
+
+    let mut decision = continuation_decision();
+    decision.outcome = ContinuationOutcome::MarkRepairBugForHumanTriage;
+    decision.safe_reason_code = RepairContinuationSafeReason::HumanTriageRequired;
+    decision.next_repair_continuation_index = None;
+    assert!(context.validate_decision(&decision).is_ok());
+
+    decision.safe_reason_code = RepairContinuationSafeReason::MaliciousTaskSuspectedStop;
+    assert!(context.validate_decision(&decision).is_err());
+}
+
+#[test]
 fn continuation_rejects_wrong_safe_reason_for_looping_bug() {
     let mut context = continuation_context();
     context.interruption_reason = RepairInterruptionReason::SuspectedLoopingBug;

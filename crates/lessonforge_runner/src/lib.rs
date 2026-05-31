@@ -5,13 +5,19 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fmt;
-use std::fs;
-use std::io::Read as _;
+use std::fs::{self, OpenOptions};
+use std::io::{Read as _, Write as _};
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::{Component, Path, PathBuf};
 
 use thiserror::Error;
 
 const MAX_ED25519_KEY_FILE_BYTES: u64 = 1024;
+#[cfg(target_os = "macos")]
+const O_NOFOLLOW_FLAG: i32 = 0x0000_0100;
+#[cfg(target_os = "linux")]
+const O_NOFOLLOW_FLAG: i32 = 0x0002_0000;
 
 pub fn crate_boundary() -> &'static str {
     "local_runner"
@@ -554,7 +560,7 @@ pub fn dummy_proposed_task_graph(
         "proposal_id": "plan_energy_001_a",
         "request_id": context.request_id,
         "planning_task_id": context.planning_task_id,
-        "planner_runner_id": "actor_planner_001",
+        "planner_runner_id": validated.config.runner.runner_id,
         "schema_version": "1.0",
         "status": "proposed",
         "source_request_summary": {
@@ -650,7 +656,7 @@ pub fn dummy_plan_verification(
         "verification_id": "pverify_energy_001_a",
         "proposal_id": context.proposal_id,
         "verification_task_id": context.verification_task_id,
-        "verifier_runner_id": "actor_verifier_001",
+        "verifier_runner_id": validated.config.runner.runner_id,
         "verification_type": "plan_schema_policy_cross_check",
         "status": "submitted",
         "outcome": "no_blocking_findings",
@@ -686,7 +692,7 @@ pub fn write_dummy_artifact_bundle(
     for (name, bytes) in dummy_bundle_files(context)? {
         let path = output_root.join(name);
         reject_existing_symlink_workspace_descendants(workspace_root, &path)?;
-        fs::write(path, bytes).map_err(|_| RunnerOutputError::OutputUnavailable)?;
+        write_new_file_without_following_symlinks(&path, &bytes)?;
     }
     let file_digests = compute_runner_file_digests(output_root)?;
     let bundle_digest = compute_runner_bundle_digest(&file_digests, context)?;
@@ -728,6 +734,23 @@ pub fn write_dummy_artifact_bundle(
             runner_self_test_report,
         },
     })
+}
+
+fn write_new_file_without_following_symlinks(
+    path: &Path,
+    bytes: &[u8],
+) -> Result<(), RunnerOutputError> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        options.custom_flags(O_NOFOLLOW_FLAG);
+    }
+    let mut file = options
+        .open(path)
+        .map_err(|_| RunnerOutputError::OutputUnavailable)?;
+    file.write_all(bytes)
+        .map_err(|_| RunnerOutputError::OutputUnavailable)
 }
 
 fn expected_claim_output_root(
@@ -1015,7 +1038,7 @@ fn read_bounded_ed25519_key_file(path: &Path) -> Result<Vec<u8>, std::io::Error>
         ));
     }
     let mut bytes = Vec::new();
-    file.by_ref()
+    std::io::Read::by_ref(&mut file)
         .take(MAX_ED25519_KEY_FILE_BYTES + 1)
         .read_to_end(&mut bytes)?;
     if bytes.len() as u64 > MAX_ED25519_KEY_FILE_BYTES {

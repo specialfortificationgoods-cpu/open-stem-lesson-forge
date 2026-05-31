@@ -25,7 +25,7 @@ use std::error::Error;
 
 #[test]
 fn api_workflow_composes_intake_and_moderation_deterministically() -> Result<(), Box<dyn Error>> {
-    let mut workflow = DeterministicWorkflow::new();
+    let mut workflow = test_workflow();
     let intake = workflow.submit_request(valid_payload(), intake_context()?)?;
 
     assert_eq!(intake.request.state, RequestState::ModerationPending);
@@ -84,7 +84,7 @@ fn api_workflow_composes_intake_and_moderation_deterministically() -> Result<(),
 #[test]
 fn api_workflow_rejects_malformed_auto_repair_preference() -> Result<(), Box<dyn Error>> {
     for value in [json!(123), json!(null), json!({})] {
-        let mut workflow = DeterministicWorkflow::new();
+        let mut workflow = test_workflow();
         let mut payload = valid_payload();
         payload["auto_repair_preference"] = value;
 
@@ -106,7 +106,7 @@ fn api_workflow_rejects_malformed_auto_repair_preference() -> Result<(), Box<dyn
 
 #[test]
 fn api_workflow_rejects_unsupported_auto_repair_preference() -> Result<(), Box<dyn Error>> {
-    let mut workflow = DeterministicWorkflow::new();
+    let mut workflow = test_workflow();
     let mut payload = valid_payload();
     payload["auto_repair_preference"] = json!("keep_fixing");
 
@@ -127,7 +127,7 @@ fn api_workflow_rejects_unsupported_auto_repair_preference() -> Result<(), Box<d
 
 #[test]
 fn api_workflow_rejects_second_request_without_resetting_state() -> Result<(), Box<dyn Error>> {
-    let mut workflow = DeterministicWorkflow::new();
+    let mut workflow = test_workflow();
     let intake = workflow.submit_request(valid_payload(), intake_context()?)?;
     workflow.claim_request_moderation_task(
         intake.moderation_task.task_id.clone(),
@@ -170,7 +170,7 @@ fn moderation_report(
 #[test]
 fn stale_or_changed_moderation_submission_does_not_duplicate_planning() -> Result<(), Box<dyn Error>>
 {
-    let mut workflow = DeterministicWorkflow::new();
+    let mut workflow = test_workflow();
     let intake = workflow.submit_request(valid_payload(), intake_context()?)?;
     workflow.claim_request_moderation_task(
         intake.moderation_task.task_id.clone(),
@@ -210,7 +210,7 @@ fn stale_or_changed_moderation_submission_does_not_duplicate_planning() -> Resul
 #[test]
 fn api_workflow_review_requires_claim_and_promotes_only_valid_human_review()
 -> Result<(), Box<dyn Error>> {
-    let mut workflow = DeterministicWorkflow::new();
+    let mut workflow = test_workflow();
     let task = workflow.open_review_task(review_context()?)?;
     assert_eq!(task.state, ReviewTaskState::Open);
     assert_eq!(
@@ -250,6 +250,7 @@ fn api_workflow_review_requires_claim_and_promotes_only_valid_human_review()
     let debug_state = format!("{workflow:?}");
     assert!(!debug_state.contains(&claim_token));
     assert!(!debug_state.contains("claim_token_hash"));
+    assert!(!debug_state.contains("test-review-claim-secret"));
     let replayed_claim = workflow.claim_review_task(
         task.review_task_id.clone(),
         LeaseId::try_from("lease_review_energy_001")?,
@@ -339,8 +340,32 @@ fn api_workflow_review_requires_claim_and_promotes_only_valid_human_review()
 }
 
 #[test]
-fn api_workflow_review_rejects_wrong_token_and_conflicted_reviewer() -> Result<(), Box<dyn Error>> {
+fn api_workflow_review_claim_requires_server_secret() -> Result<(), Box<dyn Error>> {
     let mut workflow = DeterministicWorkflow::new();
+    let task = workflow.open_review_task(review_context()?)?;
+
+    let error = workflow.claim_review_task(
+        task.review_task_id,
+        LeaseId::try_from("lease_review_energy_001")?,
+        "review-claim-001",
+        reviewer(
+            "actor_reviewer_001",
+            "operator_reviewer",
+            "conflict_reviewer",
+        )?,
+        source_lineage()?,
+    );
+
+    assert!(matches!(
+        error,
+        Err(ReviewPolicyError::ReviewVerifierSecretUnavailable)
+    ));
+    Ok(())
+}
+
+#[test]
+fn api_workflow_review_rejects_wrong_token_and_conflicted_reviewer() -> Result<(), Box<dyn Error>> {
+    let mut workflow = test_workflow();
     let task = workflow.open_review_task(review_context()?)?;
     assert!(
         workflow
@@ -390,7 +415,7 @@ fn api_workflow_review_rejects_wrong_token_and_conflicted_reviewer() -> Result<(
 #[test]
 fn api_workflow_review_rejects_stale_reopen_after_review_requested_or_peer_reviewed()
 -> Result<(), Box<dyn Error>> {
-    let mut workflow = DeterministicWorkflow::new();
+    let mut workflow = test_workflow();
     let task = workflow.open_review_task(review_context()?)?;
     assert!(workflow.open_review_task(review_context()?).is_err());
 
@@ -425,7 +450,7 @@ fn api_workflow_review_rejects_stale_reopen_after_review_requested_or_peer_revie
 
 #[test]
 fn api_workflow_review_uses_current_gate_state_at_claim_and_submit() -> Result<(), Box<dyn Error>> {
-    let mut workflow = DeterministicWorkflow::new();
+    let mut workflow = test_workflow();
     let mut blocked_before_claim = review_context()?;
     blocked_before_claim.request_state = RequestState::Quarantined;
     workflow.open_review_task(review_context()?)?;
@@ -446,7 +471,7 @@ fn api_workflow_review_uses_current_gate_state_at_claim_and_submit() -> Result<(
             .is_err()
     );
 
-    let mut workflow = DeterministicWorkflow::new();
+    let mut workflow = test_workflow();
     let task = workflow.open_review_task(review_context()?)?;
     let claim = workflow.claim_review_task(
         task.review_task_id.clone(),
@@ -482,7 +507,7 @@ fn api_workflow_review_uses_current_gate_state_at_claim_and_submit() -> Result<(
 
 #[test]
 fn api_workflow_review_rejects_overlong_claim_token() -> Result<(), Box<dyn Error>> {
-    let mut workflow = DeterministicWorkflow::new();
+    let mut workflow = test_workflow();
     let task = workflow.open_review_task(review_context()?)?;
     workflow.claim_review_task(
         task.review_task_id.clone(),
@@ -515,7 +540,7 @@ fn api_workflow_review_rejects_overlong_claim_token() -> Result<(), Box<dyn Erro
 #[test]
 fn api_workflow_review_rejects_expired_claim_and_separator_ambiguous_changed_replay()
 -> Result<(), Box<dyn Error>> {
-    let mut workflow = DeterministicWorkflow::new();
+    let mut workflow = test_workflow();
     workflow.set_now(10);
     let task = workflow.open_review_task(review_context()?)?;
     let claim = workflow.claim_review_task(
@@ -600,7 +625,7 @@ fn api_workflow_review_rejects_expired_claim_and_separator_ambiguous_changed_rep
 
 #[test]
 fn api_workflow_review_claim_expiry_saturates_at_u64_max() -> Result<(), Box<dyn Error>> {
-    let mut workflow = DeterministicWorkflow::new();
+    let mut workflow = test_workflow();
     workflow.set_now(u64::MAX - 10);
     let task = workflow.open_review_task(review_context()?)?;
 
@@ -622,7 +647,7 @@ fn api_workflow_review_claim_expiry_saturates_at_u64_max() -> Result<(), Box<dyn
 
 #[test]
 fn api_workflow_review_claim_replays_are_not_evicted() -> Result<(), Box<dyn Error>> {
-    let mut workflow = DeterministicWorkflow::new();
+    let mut workflow = test_workflow();
     workflow.set_now(1);
     let task = workflow.open_review_task(review_context()?)?;
     let mut first_claim = None;
@@ -707,6 +732,10 @@ fn intake_context() -> Result<IntakeContext, Box<dyn Error>> {
         default_auto_repair_preference: AutoRepairPreference::NoAutomatedRepair,
         default_visibility: StoredRequestVisibility::Public,
     })
+}
+
+fn test_workflow() -> DeterministicWorkflow {
+    DeterministicWorkflow::new_with_review_claim_secret("test-review-claim-secret")
 }
 
 fn review_context() -> Result<ReviewContext, Box<dyn Error>> {

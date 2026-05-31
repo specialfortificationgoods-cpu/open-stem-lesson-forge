@@ -1386,12 +1386,11 @@ fn unsafe_markdown(value: &str) -> bool {
         || normalized.contains("/var/")
         || normalized.contains("/tmp/")
         || normalized.contains("c:\\")
-        || contains_word_or_phrase(&normalized, "provider")
-        || contains_word_or_phrase(&normalized, "model")
-        || contains_word_or_phrase(&normalized, "prompt")
+        || provider_trace_like(value, &normalized)
+        || prompt_trace_like(&normalized)
         || contains_word_or_phrase(&normalized, "raw transcript")
         || normalized.contains("transcript:")
-        || contains_word_or_phrase(&normalized, "quota")
+        || quota_trace_like(&normalized)
         || normalized.contains("../")
         || normalized.contains("~/")
         || secret_like(value)
@@ -1413,12 +1412,11 @@ fn unsafe_public_text(value: &str) -> bool {
         || normalized.contains("../")
         || normalized.contains("~/")
         || normalized.contains("c:\\")
-        || contains_word_or_phrase(&normalized, "provider")
-        || contains_word_or_phrase(&normalized, "model")
-        || contains_word_or_phrase(&normalized, "prompt")
+        || provider_trace_like(value, &normalized)
+        || prompt_trace_like(&normalized)
         || contains_word_or_phrase(&normalized, "raw transcript")
         || normalized.contains("transcript:")
-        || contains_word_or_phrase(&normalized, "quota")
+        || quota_trace_like(&normalized)
         || value.chars().any(char::is_control)
         || secret_like(value)
         || pii_like(value)
@@ -1427,32 +1425,86 @@ fn unsafe_public_text(value: &str) -> bool {
 
 fn secret_like(value: &str) -> bool {
     let normalized = value.to_ascii_lowercase();
-    [
-        "api_key",
-        "apikey",
-        "secret",
-        "token",
-        "cookie",
-        "credential",
-        "password",
-        "sk-",
-    ]
-    .iter()
-    .any(|needle| normalized.contains(needle))
+    normalized.contains("sk-")
+        || assignment_like(&normalized, "api_key")
+        || assignment_like(&normalized, "apikey")
+        || assignment_like(&normalized, "token")
+        || assignment_like(&normalized, "password")
+        || assignment_like(&normalized, "credential")
+        || assignment_like(&normalized, "cookie")
+        || assignment_like(&normalized, "secret")
+        || contains_word_or_phrase(&normalized, "authorization bearer")
+        || normalized.trim_start().starts_with("bearer ")
+        || normalized.contains(" bearer ")
 }
 
 fn pii_like(value: &str) -> bool {
     let normalized = value.to_ascii_lowercase();
-    [
-        "student",
-        "student record",
-        "named student",
-        "grade",
-        "scored",
-        "placement",
-    ]
-    .iter()
-    .any(|needle| contains_word_or_phrase(&normalized, needle))
+    contains_word_or_phrase(&normalized, "student id")
+        || contains_word_or_phrase(&normalized, "student record")
+        || contains_word_or_phrase(&normalized, "named student")
+        || student_score_context_like(value, &normalized)
+}
+
+fn provider_trace_like(value: &str, normalized: &str) -> bool {
+    contains_word_or_phrase(normalized, "generated with provider")
+        || (contains_word_or_phrase(normalized, "provider")
+            && contains_word_or_phrase(normalized, "model")
+            && value.split_whitespace().count() <= 16)
+}
+
+fn prompt_trace_like(normalized: &str) -> bool {
+    contains_word_or_phrase(normalized, "prompt path")
+        || contains_word_or_phrase(normalized, "raw prompt")
+        || normalized.trim_start().starts_with("prompt:")
+        || contains_word_or_phrase(normalized, "ignore previous instructions")
+        || contains_word_or_phrase(normalized, "reveal hidden answers")
+        || normalized.contains("/prompts/")
+}
+
+fn quota_trace_like(normalized: &str) -> bool {
+    contains_word_or_phrase(normalized, "quota remaining")
+        || contains_word_or_phrase(normalized, "exact quota")
+}
+
+fn assignment_like(normalized: &str, key: &str) -> bool {
+    normalized.match_indices(key).any(|(index, _)| {
+        let tail = normalized[index + key.len()..].trim_start();
+        tail.starts_with('=') || tail.starts_with(':')
+    })
+}
+
+fn student_score_context_like(value: &str, normalized: &str) -> bool {
+    (contains_word_or_phrase(normalized, "student")
+        || contains_word_or_phrase(normalized, "learner")
+        || contains_word_or_phrase(normalized, "roster")
+        || contains_word_or_phrase(normalized, "attendance")
+        || contains_word_or_phrase(normalized, "grade record")
+        || contains_word_or_phrase(normalized, "class list"))
+        && contains_titlecase_name_pair(value)
+}
+
+fn contains_titlecase_name_pair(value: &str) -> bool {
+    let mut previous_was_name = false;
+    for word in value.split(|character: char| !character.is_ascii_alphabetic()) {
+        if word.is_empty() {
+            continue;
+        }
+        let current_is_name = titlecase_word_shape(word);
+        if previous_was_name && current_is_name {
+            return true;
+        }
+        previous_was_name = current_is_name;
+    }
+    false
+}
+
+fn titlecase_word_shape(word: &str) -> bool {
+    let mut chars = word.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    word.len() >= 2 && first.is_ascii_uppercase() && chars.all(|ch| ch.is_ascii_lowercase())
 }
 
 fn inappropriate_content(value: &str) -> bool {

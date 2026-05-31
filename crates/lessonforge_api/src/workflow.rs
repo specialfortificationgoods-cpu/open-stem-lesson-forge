@@ -18,9 +18,9 @@ use lessonforge_core::state::{
 };
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
-use std::sync::OnceLock;
+use std::fmt;
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct DeterministicWorkflow {
     request: Option<StoredRequest>,
     moderation_task_id: Option<RequestModerationTaskId>,
@@ -34,12 +34,41 @@ pub struct DeterministicWorkflow {
     review_submission: Option<StoredReviewSubmission>,
     review_gate_state: Option<ReviewGateState>,
     artifact_state: Option<ArtifactState>,
+    review_claim_secret: Option<String>,
     now: u64,
+}
+
+impl fmt::Debug for DeterministicWorkflow {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("DeterministicWorkflow")
+            .field("request", &self.request)
+            .field("moderation_task_id", &self.moderation_task_id)
+            .field("planning_task_id", &self.planning_task_id)
+            .field("moderation_claim", &self.moderation_claim)
+            .field("moderation_outcome", &self.moderation_outcome)
+            .field("planning_tasks", &self.planning_tasks)
+            .field("review_task", &self.review_task)
+            .field("review_claim", &self.review_claim)
+            .field("review_claim_replays", &self.review_claim_replays)
+            .field("review_submission", &self.review_submission)
+            .field("review_gate_state", &self.review_gate_state)
+            .field("artifact_state", &self.artifact_state)
+            .field("review_claim_secret", &"<redacted>")
+            .field("now", &self.now)
+            .finish()
+    }
 }
 
 impl DeterministicWorkflow {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn new_with_review_claim_secret(secret: impl Into<String>) -> Self {
+        let mut workflow = Self::new();
+        workflow.review_claim_secret = Some(secret.into());
+        workflow
     }
 
     pub fn submit_request(
@@ -262,12 +291,17 @@ impl DeterministicWorkflow {
             open_blocking_findings_elsewhere: gate.open_blocking_findings_elsewhere,
         };
         validate_review_claim(task, &probe)?;
+        let review_claim_secret = self.review_claim_secret()?;
         let result = ReviewClaimResult {
             review_task_id: review_task_id.clone(),
             lease_id: lease_id.clone(),
             review_task_state: ReviewTaskState::Claimed,
             claim_token_returned: true,
-            claim_token: Some(derive_review_claim_token(&lease_id, idempotency_key)),
+            claim_token: Some(derive_review_claim_token(
+                &lease_id,
+                idempotency_key,
+                review_claim_secret,
+            )),
             expires_at: self.now.saturating_add(REVIEW_LEASE_TTL_SECONDS),
         };
         self.review_claim = Some(ReviewClaim {
@@ -318,10 +352,12 @@ impl DeterministicWorkflow {
             && stored.lease_id == lease_id
             && stored.idempotency_key == idempotency_key
         {
+            let review_claim_secret = self.review_claim_secret()?;
             if !review_claim_token_matches(
                 &stored.lease_id,
                 &stored.claim_idempotency_key,
                 claim_token,
+                review_claim_secret,
             ) {
                 return Err(ReviewPolicyError::ReviewLeaseNotActive);
             }
@@ -340,9 +376,15 @@ impl DeterministicWorkflow {
         if claim.is_expired(self.now) {
             return Err(ReviewPolicyError::ReviewLeaseNotActive);
         }
+        let review_claim_secret = self.review_claim_secret()?;
         if claim.task_id != review_task_id
             || claim.lease_id != lease_id
-            || !review_claim_token_matches(&claim.lease_id, &claim.idempotency_key, claim_token)
+            || !review_claim_token_matches(
+                &claim.lease_id,
+                &claim.idempotency_key,
+                claim_token,
+                review_claim_secret,
+            )
         {
             return Err(ReviewPolicyError::ReviewLeaseNotActive);
         }
@@ -423,6 +465,16 @@ impl DeterministicWorkflow {
                 ..task.clone()
             });
         }
+    }
+
+    fn review_claim_secret(&self) -> Result<&str, ReviewPolicyError> {
+        let Some(secret) = &self.review_claim_secret else {
+            return Err(ReviewPolicyError::ReviewVerifierSecretUnavailable);
+        };
+        if secret.trim().is_empty() {
+            return Err(ReviewPolicyError::ReviewVerifierSecretUnavailable);
+        }
+        Ok(secret)
     }
 }
 
@@ -530,10 +582,14 @@ struct StoredReviewSubmission {
     result: ReviewSubmissionResult,
 }
 
-fn derive_review_claim_token(lease_id: &LeaseId, claim_idempotency_key: &str) -> String {
+fn derive_review_claim_token(
+    lease_id: &LeaseId,
+    claim_idempotency_key: &str,
+    review_claim_secret: &str,
+) -> String {
     digest_hex(format!(
         "lessonforge-review-claim-token-v2\0{}\0{}\0{}",
-        review_claim_verifier_salt(),
+        review_claim_secret,
         lease_id.as_str(),
         claim_idempotency_key
     ))
@@ -543,12 +599,13 @@ fn review_claim_token_matches(
     lease_id: &LeaseId,
     claim_idempotency_key: &str,
     claim_token: &str,
+    review_claim_secret: &str,
 ) -> bool {
     if claim_token.len() != 64 {
         return false;
     }
     constant_time_eq(
-        derive_review_claim_token(lease_id, claim_idempotency_key).as_bytes(),
+        derive_review_claim_token(lease_id, claim_idempotency_key, review_claim_secret).as_bytes(),
         claim_token.as_bytes(),
     )
 }
@@ -562,22 +619,6 @@ fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
         diff |= usize::from(left_byte ^ right_byte);
     }
     diff == 0
-}
-
-fn review_claim_verifier_salt() -> &'static str {
-    static SALT: OnceLock<String> = OnceLock::new();
-    SALT.get_or_init(|| {
-        let mut bytes = [0u8; 32];
-        if getrandom::fill(&mut bytes).is_err() {
-            std::process::abort();
-        }
-        let mut output = String::from("review-claim-verifier-v2:");
-        for byte in bytes {
-            output.push(hex_char(byte >> 4));
-            output.push(hex_char(byte & 0x0f));
-        }
-        output
-    })
 }
 
 fn validate_idempotency_key(value: &str) -> Result<(), ReviewPolicyError> {

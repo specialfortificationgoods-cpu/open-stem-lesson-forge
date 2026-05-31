@@ -58,6 +58,17 @@ fn rejected_graphs_create_safe_errors_and_no_verification_task() -> Result<(), B
         "/proposed_tasks/0/provider"
     );
     assert!(!format!("{forbidden_outcome:?}").contains("raw rejected value"));
+
+    let mut foreign_lineage = valid_graph();
+    foreign_lineage["request_id"] = json!("req_foreign_001");
+    foreign_lineage["planning_task_id"] = json!("ptask_foreign_001");
+    foreign_lineage["planner_runner_id"] = json!("actor_foreign_planner_001");
+    foreign_lineage["proposed_tasks"][0]["provider"] = json!("raw rejected value");
+    let foreign_lineage_outcome = validate_proposed_task_graph(foreign_lineage, graph_context()?)?;
+    let rendered = format!("{foreign_lineage_outcome:?}");
+    assert!(!rendered.contains("req_foreign_001"));
+    assert!(!rendered.contains("ptask_foreign_001"));
+    assert!(!rendered.contains("actor_foreign_planner_001"));
     Ok(())
 }
 

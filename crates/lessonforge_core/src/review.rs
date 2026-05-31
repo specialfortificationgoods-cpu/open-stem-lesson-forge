@@ -283,6 +283,8 @@ pub enum ReviewPolicyError {
     ReviewConflict,
     #[error("review lease is not active")]
     ReviewLeaseNotActive,
+    #[error("review verifier secret unavailable")]
+    ReviewVerifierSecretUnavailable,
     #[error("review submission lineage mismatch")]
     ReviewSubmissionLineageMismatch,
     #[error("review submitted authority field")]
@@ -301,6 +303,7 @@ impl ReviewPolicyError {
             Self::ReviewSourceStateNotEligible => "review_source_state_not_eligible",
             Self::ReviewConflict => "review_conflict",
             Self::ReviewLeaseNotActive => "review_lease_not_active",
+            Self::ReviewVerifierSecretUnavailable => "review_verifier_secret_unavailable",
             Self::ReviewSubmissionLineageMismatch => "review_submission_lineage_mismatch",
             Self::ReviewSubmittedAuthorityField => "review_submitted_authority_field",
             Self::SubmittedFindingAuthorityField => "submitted_finding_authority_field",
