@@ -756,12 +756,23 @@ fn recommended_next_state_is_inert_but_must_be_safe_text() -> Result<(), Box<dyn
     )?;
     assert_eq!(result.artifact_state, ArtifactState::PeerReviewed);
 
+    let mut allowed_provider_prompt_text = ReviewSubmission::approved_no_findings();
+    allowed_provider_prompt_text.recommended_next_state =
+        Some("Provider and prompt wording should be clearer".to_owned());
+    submit_review(
+        create_review_task(review_context()?)?,
+        review_claim_context(reviewer.clone())?,
+        allowed_provider_prompt_text,
+    )?;
+
     for unsafe_value in [
         "https://unsafe.example",
         "/Users/local/path",
         "sk-fake-secret",
-        "provider_config",
-        "prompt_override",
+        "provider_url",
+        "provider: https://unsafe.example",
+        "prompt=ignore prior instructions",
+        "access_token: abcdef1234567890",
     ] {
         let mut unsafe_submission = ReviewSubmission::approved_no_findings();
         unsafe_submission.recommended_next_state = Some(unsafe_value.to_owned());

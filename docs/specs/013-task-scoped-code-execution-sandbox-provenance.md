@@ -219,7 +219,7 @@ Canonical bundle digest object:
     {"path": "teacher_notes.md", "sha256": "sha256:<64-lower-hex>", "size_bytes": 0},
     {"path": "worksheet.md", "sha256": "sha256:<64-lower-hex>", "size_bytes": 0}
   ],
-  "runner_actor_id": "runner_dummy_generator_001",
+  "runner_actor_id": "actor_generator_001",
   "work_packet_id": "wp_energy_001_generate_pack"
 }
 ```

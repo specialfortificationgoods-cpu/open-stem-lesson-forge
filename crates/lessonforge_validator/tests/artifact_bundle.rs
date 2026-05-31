@@ -81,7 +81,7 @@ fn artifact_digests_are_deterministic_and_tamper_sensitive() -> Result<(), Box<d
     );
     assert_eq!(
         first.bundle_digest,
-        "sha256:2f0f78682bcefbd9b1a72f5179450f60195a1177ba2805b665f2cc37a78cf1a0"
+        "sha256:36fa559af173f5e0b0eb7aa8acea8e9cb2644ed6773d4ea336d3115d0d2edc75"
     );
 
     fs::write(temp.path().join("worksheet.md"), "# Changed\n")?;
@@ -675,7 +675,7 @@ fn context(execution_mode: CheckerExecutionMode) -> ArtifactValidationContext {
         request_id: "req_energy_001".to_owned(),
         generation_work_packet_id: "wp_energy_001_generate_pack".to_owned(),
         generation_execution_policy: "sandboxed_self_test_python_checker".to_owned(),
-        runner_actor_id: "runner_dummy_generator_001".to_owned(),
+        runner_actor_id: "actor_generator_001".to_owned(),
         validator_version: "1.0".to_owned(),
         execution_mode,
         submitted_digests: None,

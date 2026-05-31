@@ -502,7 +502,7 @@ The dummy worker runner computes artifact digests and, when the local sandbox pr
   "self_test_report_id": "rselftest_energy_001",
   "work_packet_id": "wp_energy_001_generate_pack",
   "lease_id": "lease_generate_energy_001",
-  "runner_actor_id": "runner_dummy_generator_001",
+  "runner_actor_id": "actor_generator_001",
   "execution_policy": "sandboxed_self_test_python_checker",
   "execution_profile_id": "python_checker_self_test_v1",
   "allowed_command_id": "python_checker_self_test_harness_v1",

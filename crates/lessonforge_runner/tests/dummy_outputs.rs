@@ -57,7 +57,7 @@ fn dummy_moderator_planner_and_verifier_emit_schema_valid_safe_json() -> Result<
 fn dummy_generator_writes_valid_bundle_and_authoritative_digests() -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
     let generator = validate_runner_config(&dummy_config_with_workspace(
-        "runner_dummy_generator_001",
+        "actor_generator_001",
         "Dummy Generator",
         RunnerMode::DummyGenerator,
         temp.path(),
@@ -127,7 +127,7 @@ fn dummy_generator_writes_valid_bundle_and_authoritative_digests() -> Result<(),
 
     let other_temp = tempfile::tempdir()?;
     let other_generator = validate_runner_config(&dummy_config_with_workspace_and_key(
-        "runner_dummy_generator_001",
+        "actor_generator_001",
         "Dummy Generator",
         RunnerMode::DummyGenerator,
         other_temp.path(),
@@ -188,7 +188,7 @@ fn dummy_generator_writes_valid_bundle_and_authoritative_digests() -> Result<(),
 fn dummy_generator_requires_valid_attestation_config() -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
     let mut missing = dummy_config(
-        "runner_dummy_generator_001",
+        "actor_generator_001",
         "Dummy Generator",
         RunnerMode::DummyGenerator,
     );
@@ -196,7 +196,7 @@ fn dummy_generator_requires_valid_attestation_config() -> Result<(), Box<dyn Err
     assert_eq!(config_error_code(&missing), "invalid_attestation_config");
 
     let mut wrong_path = dummy_config_with_workspace(
-        "runner_dummy_generator_001",
+        "actor_generator_001",
         "Dummy Generator",
         RunnerMode::DummyGenerator,
         temp.path(),
@@ -214,7 +214,7 @@ fn dummy_generator_requires_valid_attestation_config() -> Result<(), Box<dyn Err
     let large_key_path = large_key_dir.join("runner.hex");
     std::fs::write(&large_key_path, vec![b'a'; 2048])?;
     let mut large_key = dummy_config_with_workspace(
-        "runner_dummy_generator_001",
+        "actor_generator_001",
         "Dummy Generator",
         RunnerMode::DummyGenerator,
         temp.path(),
@@ -235,7 +235,7 @@ fn dummy_generator_requires_valid_attestation_config() -> Result<(), Box<dyn Err
         std::fs::create_dir_all(key_parent)?;
         std::os::unix::fs::symlink(&outside_key, &symlink_key_path)?;
         let mut symlink_key = dummy_config_with_workspace(
-            "runner_dummy_generator_001",
+            "actor_generator_001",
             "Dummy Generator",
             RunnerMode::DummyGenerator,
             temp.path(),
@@ -250,7 +250,7 @@ fn dummy_generator_requires_valid_attestation_config() -> Result<(), Box<dyn Err
         let socket_key_path = temp.path().join("keys").join("socket-runner.hex");
         let _socket = std::os::unix::net::UnixListener::bind(&socket_key_path)?;
         let mut socket_key = dummy_config_with_workspace(
-            "runner_dummy_generator_001",
+            "actor_generator_001",
             "Dummy Generator",
             RunnerMode::DummyGenerator,
             temp.path(),
@@ -295,7 +295,7 @@ fn dummy_generator_rejects_wrong_mode_and_path_traversal() -> Result<(), Box<dyn
     );
 
     let generator = validate_runner_config(&dummy_config_with_workspace(
-        "runner_dummy_generator_001",
+        "actor_generator_001",
         "Dummy Generator",
         RunnerMode::DummyGenerator,
         temp.path(),
@@ -327,7 +327,7 @@ fn dummy_generator_rejects_symlinked_claim_output_dir() -> Result<(), Box<dyn Er
     let temp = tempfile::tempdir()?;
     let outside = tempfile::tempdir()?;
     let generator = validate_runner_config(&dummy_config_with_workspace(
-        "runner_dummy_generator_001",
+        "actor_generator_001",
         "Dummy Generator",
         RunnerMode::DummyGenerator,
         temp.path(),

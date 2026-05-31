@@ -334,7 +334,7 @@ fn run_full_mvp_smoke(root: &Path) -> Result<(), String> {
     let temp = tempfile::tempdir().map_err(|_| "temporary_workspace_unavailable")?;
     let workspace = temp.path().join("runner-work");
     let mut generator_config = RunnerConfig::dummy(
-        "runner_dummy_generator_001",
+        "actor_generator_001",
         "Dummy generator",
         RunnerMode::DummyGenerator,
         "http://127.0.0.1:8080",

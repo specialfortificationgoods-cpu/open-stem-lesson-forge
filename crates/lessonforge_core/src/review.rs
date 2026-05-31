@@ -699,19 +699,108 @@ fn safe_text(value: &str) -> bool {
         && !lower.contains("auth.json")
         && !lower.contains("id_rsa")
         && !lower.contains("library/application support")
-        && !lower.contains("sk-")
-        && !lower.contains("api_key")
-        && !lower.contains("cookie")
-        && !lower.contains("credential")
-        && !lower.contains("oauth")
-        && !lower.contains("token")
-        && !lower.contains("password")
-        && !lower.contains("prompt")
-        && !lower.contains("provider")
-        && !lower.contains("secret")
+        && !contains_sensitive_review_marker(&lower)
         && !contains_student_pii_marker(value, &lower)
         && !lower.contains("```")
         && !lower.contains("<script")
+}
+
+fn contains_sensitive_review_marker(lower: &str) -> bool {
+    contains_delimited_prefix(lower, "sk-")
+        || contains_token_sequence(lower, &["api", "key"])
+        || contains_token_sequence(lower, &["secret", "key"])
+        || contains_token_sequence(lower, &["access", "token"])
+        || contains_token_sequence(lower, &["refresh", "token"])
+        || contains_token_sequence(lower, &["auth", "token"])
+        || contains_token_sequence(lower, &["provider", "url"])
+        || contains_assignment_like_alias(lower, "provider")
+        || contains_assignment_like_alias(lower, "prompt")
+        || contains_assignment_like_alias(lower, "cookie")
+        || contains_assignment_like_alias(lower, "credential")
+        || contains_assignment_like_alias(lower, "oauth")
+        || contains_assignment_like_alias(lower, "password")
+        || contains_assignment_like_secret_value(lower, "token")
+        || contains_assignment_like_secret_value(lower, "secret")
+}
+
+fn contains_token_sequence(lower: &str, sequence: &[&str]) -> bool {
+    lower
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>()
+        .windows(sequence.len())
+        .any(|window| window == sequence)
+}
+
+fn contains_assignment_like_alias(lower: &str, alias: &str) -> bool {
+    assignment_like_values(lower, alias).next().is_some()
+}
+
+fn contains_assignment_like_secret_value(lower: &str, alias: &str) -> bool {
+    assignment_like_values(lower, alias).any(assigned_value_looks_secret)
+}
+
+fn assignment_like_values<'a>(lower: &'a str, alias: &'a str) -> impl Iterator<Item = &'a str> {
+    let mut search_start = 0;
+    std::iter::from_fn(move || {
+        while let Some(relative_index) = lower[search_start..].find(alias) {
+            let index = search_start + relative_index;
+            let before_ok = lower[..index]
+                .chars()
+                .next_back()
+                .is_none_or(|character| !character.is_ascii_alphanumeric() && character != '_');
+            let after_alias = index + alias.len();
+            let suffix = &lower[after_alias..];
+            let after_ok = suffix
+                .chars()
+                .next()
+                .is_none_or(|character| !character.is_ascii_alphanumeric() && character != '_');
+            search_start = after_alias;
+            if !before_ok || !after_ok {
+                continue;
+            }
+            let trimmed_suffix =
+                suffix.trim_start_matches(|character: char| character.is_ascii_whitespace());
+            if let Some(separator) = trimmed_suffix
+                .chars()
+                .next()
+                .filter(|character| matches!(character, ':' | '='))
+            {
+                return Some(&trimmed_suffix[separator.len_utf8()..]);
+            }
+        }
+        None
+    })
+}
+
+fn assigned_value_looks_secret(value: &str) -> bool {
+    let first_token = value
+        .trim_start()
+        .split(|character: char| character.is_ascii_whitespace() || matches!(character, ',' | ';'))
+        .next()
+        .unwrap_or_default()
+        .trim_matches(|character: char| matches!(character, '"' | '\'' | '[' | ']' | '{' | '}'));
+    first_token.len() >= 12
+        && first_token.chars().all(|character| {
+            character.is_ascii_alphanumeric()
+                || matches!(character, '_' | '-' | '.' | '/' | '+' | '=')
+        })
+}
+
+fn contains_delimited_prefix(lower: &str, prefix: &str) -> bool {
+    let mut search_start = 0;
+    while let Some(relative_index) = lower[search_start..].find(prefix) {
+        let index = search_start + relative_index;
+        let before_ok = lower[..index]
+            .chars()
+            .next_back()
+            .is_none_or(|character| !character.is_ascii_alphanumeric() && character != '_');
+        if before_ok {
+            return true;
+        }
+        search_start = index + prefix.len();
+    }
+    false
 }
 
 fn contains_student_pii_marker(value: &str, lower: &str) -> bool {

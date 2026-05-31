@@ -377,11 +377,6 @@ fn is_email_domain_character(character: char) -> bool {
 }
 
 fn has_phone_like_digit_run(value: &str, lower: &str) -> bool {
-    for run_len in contiguous_digit_run_lengths(value) {
-        if matches!(run_len, 10 | 11) {
-            return true;
-        }
-    }
     if contains_formatted_phone_number(value) {
         return true;
     }
@@ -394,21 +389,54 @@ fn has_phone_like_digit_run(value: &str, lower: &str) -> bool {
     if contains_contextual_phone_number(value, lower) {
         return true;
     }
+    if contains_contextual_contiguous_phone_number(value, lower) {
+        return true;
+    }
     false
 }
 
-fn contiguous_digit_run_lengths(value: &str) -> Vec<usize> {
-    let mut lengths = Vec::new();
+fn contains_contextual_contiguous_phone_number(value: &str, lower: &str) -> bool {
+    contiguous_digit_run_spans(value)
+        .into_iter()
+        .any(|span| matches!(span.len, 10 | 11) && digit_run_has_phone_context(lower, span))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DigitRunSpan {
+    start: usize,
+    end: usize,
+    len: usize,
+}
+
+fn contiguous_digit_run_spans(value: &str) -> Vec<DigitRunSpan> {
+    let mut spans = Vec::new();
+    let mut run_start = None;
     let mut run_len = 0;
-    for character in value.chars().chain(std::iter::once('\0')) {
+    for (index, character) in value
+        .char_indices()
+        .chain(std::iter::once((value.len(), '\0')))
+    {
         if character.is_ascii_digit() {
+            if run_start.is_none() {
+                run_start = Some(index);
+            }
             run_len += 1;
         } else if run_len > 0 {
-            lengths.push(run_len);
+            spans.push(DigitRunSpan {
+                start: run_start.unwrap_or(index),
+                end: index,
+                len: run_len,
+            });
+            run_start = None;
             run_len = 0;
         }
     }
-    lengths
+    spans
+}
+
+fn digit_run_has_phone_context(lower: &str, span: DigitRunSpan) -> bool {
+    phone_context_before_candidate(lower, span.start)
+        || phone_context_after_candidate(lower, span.end)
 }
 
 fn contains_formatted_phone_number(value: &str) -> bool {
@@ -866,6 +894,8 @@ mod tests {
             "Use a cell phone sensor example with EAN 400 638 1333931",
             "Use cell phone 978-0-13-110362-7 as an ISBN example",
             "Use cell phone 400 638 1333931 as an EAN example",
+            "Use Unix epoch 1700000000 as a timestamp example",
+            "Use identifier 12345678901 as a synthetic numeric label",
             "Compute 1+23456789 using mental math",
         ] {
             assert!(!unsafe_reasons(text).contains(&"student_pii_like_value"));

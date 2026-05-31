@@ -227,7 +227,7 @@ The MVP uses distinct runner actor IDs for planner, verifier, and generator role
 
 - `actor_planner_001`
 - `actor_verifier_001`
-- `runner_dummy_generator_001`
+- `actor_generator_001`
 
 One local binary may support all dummy modes, but each running configuration must bind to exactly one runner actor identity and one active mode. The verifier actor must differ from the planner actor for plan verification. The generator actor does not gain reviewer or verifier authority.
 

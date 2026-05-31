@@ -427,7 +427,7 @@ impl DummyGenerationContext {
             request_id: "req_energy_001".to_owned(),
             work_packet_id: "wp_energy_001_generate_pack".to_owned(),
             lease_id: lease_id.clone(),
-            runner_actor_id: "runner_dummy_generator_001".to_owned(),
+            runner_actor_id: "actor_generator_001".to_owned(),
             execution_policy: "sandboxed_self_test_python_checker".to_owned(),
             claim_workspace_root: workspace_root.join("claims").join(lease_id),
         }
