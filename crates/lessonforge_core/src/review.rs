@@ -19,20 +19,16 @@ pub enum ArtifactVisibility {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PublicArtifactLabel {
-    DraftGenerated,
     MachineValidated,
     PeerReviewed,
-    Quarantined,
     Deprecated,
 }
 
 impl PublicArtifactLabel {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::DraftGenerated => "draft_generated",
             Self::MachineValidated => "machine_validated",
             Self::PeerReviewed => "peer_reviewed",
-            Self::Quarantined => "quarantined",
             Self::Deprecated => "deprecated",
         }
     }

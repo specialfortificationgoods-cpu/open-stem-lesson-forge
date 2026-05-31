@@ -279,12 +279,15 @@ pub struct WorkPacketRecord {
 #[derive(Clone, PartialEq, Eq)]
 pub struct GraphPolicyError {
     pub code: &'static str,
-    pub field_path: &'static str,
+    pub field_path: String,
 }
 
 impl GraphPolicyError {
-    fn new(code: &'static str, field_path: &'static str) -> Self {
-        Self { code, field_path }
+    fn new(code: &'static str, field_path: impl Into<String>) -> Self {
+        Self {
+            code,
+            field_path: field_path.into(),
+        }
     }
 }
 
@@ -571,14 +574,15 @@ fn mvp_policy_fingerprint(tasks: &[NormalizedTaskRecord]) -> String {
         .iter()
         .map(|task| {
             format!(
-                "{}:{}:{}:{}:{}:{}:{}",
+                "{}:{}:{}:{}:{}:{}:{}:{}",
                 task.local_id,
                 task.phase,
                 task.task_type,
                 task.required_capabilities.join(","),
                 task.outputs.join(","),
                 task.depends_on.join(","),
-                task.validation_required.join(",")
+                task.validation_required.join(","),
+                task.execution_policy.as_deref().unwrap_or("")
             )
         })
         .collect::<Vec<_>>()
@@ -614,21 +618,36 @@ fn first_shape_error(input: &Value) -> Option<GraphPolicyError> {
 }
 
 fn first_forbidden_field_error(value: &Value) -> Option<GraphPolicyError> {
+    first_forbidden_field_error_at(value, "")
+}
+
+fn first_forbidden_field_error_at(value: &Value, path: &str) -> Option<GraphPolicyError> {
     match value {
         Value::Object(object) => {
             for (key, nested) in object {
+                let key_path = json_pointer_child(path, key);
                 if is_forbidden_key(key) {
-                    return Some(GraphPolicyError::new("forbidden_runner_field", "/"));
+                    return Some(GraphPolicyError::new("forbidden_runner_field", key_path));
                 }
-                if let Some(error) = first_forbidden_field_error(nested) {
+                if let Some(error) = first_forbidden_field_error_at(nested, &key_path) {
                     return Some(error);
                 }
             }
             None
         }
-        Value::Array(items) => items.iter().find_map(first_forbidden_field_error),
+        Value::Array(items) => items.iter().enumerate().find_map(|(index, nested)| {
+            first_forbidden_field_error_at(nested, &format!("{path}/{index}"))
+        }),
         _ => None,
     }
+}
+
+fn json_pointer_child(parent: &str, key: &str) -> String {
+    format!("{parent}/{}", escape_json_pointer_segment(key))
+}
+
+fn escape_json_pointer_segment(segment: &str) -> String {
+    segment.replace('~', "~0").replace('/', "~1")
 }
 
 fn is_forbidden_key(key: &str) -> bool {
@@ -1319,6 +1338,10 @@ fn normalized_tasks_match_mvp(tasks: &[NormalizedTaskRecord]) -> bool {
         && exact_str_set(&generation.outputs, GENERATION_OUTPUTS)
         && exact_str_set(&generation.validation_required, VALIDATION_CHECKS)
         && exact_str_set(&generation.human_review_required_for, &[PEER_REVIEWED])
+        && generation
+            .execution_policy
+            .as_deref()
+            .is_none_or(|value| value == "code_generation_only")
         && validation.phase == "mechanical_validation"
         && validation.depends_on == [generation.local_id.as_str()]
         && exact_str_set(
@@ -1328,6 +1351,7 @@ fn normalized_tasks_match_mvp(tasks: &[NormalizedTaskRecord]) -> bool {
         && exact_str_set(&validation.outputs, VALIDATION_OUTPUTS)
         && validation.validation_required.is_empty()
         && validation.human_review_required_for.is_empty()
+        && validation.execution_policy.is_none()
         && review.phase == "human_review"
         && review.depends_on == [validation.local_id.as_str()]
         && exact_str_set(
@@ -1337,6 +1361,7 @@ fn normalized_tasks_match_mvp(tasks: &[NormalizedTaskRecord]) -> bool {
         && exact_str_set(&review.outputs, REVIEW_OUTPUTS)
         && review.validation_required.is_empty()
         && exact_str_set(&review.human_review_required_for, &[PEER_REVIEWED])
+        && review.execution_policy.is_none()
 }
 
 fn exact_str_set(actual: &[String], expected: &[&str]) -> bool {

@@ -89,25 +89,28 @@ fn scan_path(path: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
 
 fn scan_json_strings(path: &Path, value: &Value, findings: &mut Vec<Finding>) {
     match value {
-        Value::String(text) => {
-            for reason in unsafe_reasons(text) {
-                findings.push(Finding {
-                    path: path.to_path_buf(),
-                    reason,
-                });
-            }
-        }
+        Value::String(text) => scan_text(path, text, findings),
         Value::Array(values) => {
             for child in values {
                 scan_json_strings(path, child, findings);
             }
         }
         Value::Object(object) => {
-            for child in object.values() {
+            for (key, child) in object {
+                scan_text(path, key, findings);
                 scan_json_strings(path, child, findings);
             }
         }
         Value::Null | Value::Bool(_) | Value::Number(_) => {}
+    }
+}
+
+fn scan_text(path: &Path, text: &str, findings: &mut Vec<Finding>) {
+    for reason in unsafe_reasons(text) {
+        findings.push(Finding {
+            path: path.to_path_buf(),
+            reason,
+        });
     }
 }
 
@@ -728,5 +731,23 @@ mod tests {
                 "{text} should fail as student PII-like text"
             );
         }
+    }
+
+    #[test]
+    fn json_object_keys_are_scanned_for_leaks() {
+        let value = serde_json::json!({
+            "safe": "ordinary fixture text",
+            "api_key": "redacted value"
+        });
+        let mut findings = Vec::new();
+
+        scan_json_strings(Path::new("fixture.json"), &value, &mut findings);
+
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.reason == "secret_like_value"),
+            "object keys should be scanned with the same leak rules as string values"
+        );
     }
 }

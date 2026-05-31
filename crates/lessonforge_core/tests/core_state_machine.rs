@@ -395,6 +395,8 @@ fn lease_submission_consumes_once_and_replay_requires_same_key_and_payload()
         200,
     );
     assert_eq!(lease.state(), LeaseState::Active);
+    assert_eq!(lease.effective_state(150), LeaseState::Active);
+    assert_eq!(lease.effective_state(200), LeaseState::Expired);
 
     let wrong_token_submission = LeaseSubmission {
         actor_id: actor_id.clone(),
@@ -517,6 +519,8 @@ fn lease_slots_heartbeat_and_release_replay_are_token_bound() -> Result<(), Box<
         .clone()
         .apply(LeaseAction::Heartbeat(heartbeat.clone()))?;
     assert_eq!(heartbeat_applied.state(), LeaseState::Active);
+    assert_eq!(heartbeat_applied.effective_state(199), LeaseState::Active);
+    assert_eq!(heartbeat_applied.effective_state(200), LeaseState::Expired);
     assert_eq!(heartbeat_applied.last_heartbeat_at(), Some(120));
     assert_eq!(
         heartbeat_applied
@@ -549,6 +553,7 @@ fn lease_slots_heartbeat_and_release_replay_are_token_bound() -> Result<(), Box<
         .clone()
         .apply(LeaseAction::Release(release.clone()))?;
     assert_eq!(released.state(), LeaseState::Released);
+    assert_eq!(released.effective_state(250), LeaseState::Released);
     assert_eq!(
         released
             .clone()

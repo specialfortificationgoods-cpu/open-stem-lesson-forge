@@ -615,6 +615,7 @@ Rules:
 - Submissions require active lease, matching actor, matching entity, and unexpired time.
 - Successful lease-bound state-changing submissions atomically transition the lease from `active` to `consumed`.
 - `consumed`, `released`, `expired`, `revoked`, and replaced leases cannot submit state-changing output.
+- Any command, scheduler, or uniqueness check that depends on active lease status must use effective lease state at the decision timestamp: an `active` row with `now >= expires_at` is treated as `expired` before claimability, retry, heartbeat, release, revoke, or submission decisions.
 - Lease creation, claimable-entity state change, and transition-event creation are one atomic operation.
 - Lease consumption and submitted-output persistence are one atomic operation.
 - Replaying the same consumed lease with the same idempotency key and identical payload returns the original result without creating a new record or transition event.
@@ -944,8 +945,8 @@ Required uniqueness constraints:
 
 | Surface | Unique key |
 |---|---|
-| Active lease on single-claim surfaces | `(entity_type, entity_id)` where `state=active` |
-| Active lease on explicitly fanned-out planning surfaces | `(entity_type, entity_id, lease_slot)` where `state=active`, with bounded slots defined by the scheduling spec |
+| Active lease on single-claim surfaces | `(entity_type, entity_id)` where effective state at the decision timestamp is `active` |
+| Active lease on explicitly fanned-out planning surfaces | `(entity_type, entity_id, lease_slot)` where effective state at the decision timestamp is `active`, with bounded slots defined by the scheduling spec |
 | Claim with idempotency key | `(entity_type, entity_id, actor_id, idempotency_key)` |
 | Request moderation report submission | `(request_moderation_task_id, lease_id)` |
 | Planning proposal submission | `(planning_task_id, lease_id)` |

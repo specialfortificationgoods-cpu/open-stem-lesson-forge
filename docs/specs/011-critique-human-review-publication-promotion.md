@@ -448,13 +448,13 @@ Reopen:
 
 ## Publication Labels
 
-MVP labels:
+Emitted MVP public labels:
 
-- `draft_generated`
 - `machine_validated`
 - `peer_reviewed`
-- `quarantined`
 - `deprecated`
+
+`draft_generated`, `validation_failed`, and `quarantined` are artifact states covered by the mapping below, but they do not emit public labels in MVP.
 
 Public label rules:
 

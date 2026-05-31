@@ -110,9 +110,8 @@ For unknown or rejected fields, central code may store only a generic code such 
 
 ### Request Intake
 
-Allowed request fields:
+Allowed request fields (caller-supplied):
 
-- `id`
 - `title`
 - `subject`
 - `topic`
@@ -125,9 +124,15 @@ Allowed request fields:
 - `visibility`
 - `auto_repair_preference`
 - `forbidden_content_acknowledged`
+
+Stored / system-derived request fields:
+
+- `id`
 - `status`
 - `created_at`
 - `updated_at`
+
+The API must reject caller payloads containing server-owned request fields: `id`, `status`, `created_at`, or `updated_at`.
 
 Request text fields are untrusted data. They may contain user-provided educational intent, but must not contain student PII.
 

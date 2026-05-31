@@ -852,6 +852,14 @@ impl Lease {
         self.state
     }
 
+    pub fn effective_state(&self, now: u64) -> LeaseState {
+        if self.state == LeaseState::Active && now >= self.expires_at {
+            LeaseState::Expired
+        } else {
+            self.state
+        }
+    }
+
     pub fn lease_slot(&self) -> Option<u32> {
         self.lease_slot
     }
@@ -976,7 +984,7 @@ impl Lease {
     }
 
     fn require_not_expired(&self, now: u64) -> Result<(), LeaseError> {
-        if now >= self.expires_at {
+        if self.effective_state(now) == LeaseState::Expired {
             return Err(LeaseError::Expired);
         }
         Ok(())

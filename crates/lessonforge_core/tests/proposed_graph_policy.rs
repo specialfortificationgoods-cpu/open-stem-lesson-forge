@@ -53,6 +53,10 @@ fn rejected_graphs_create_safe_errors_and_no_verification_task() -> Result<(), B
         forbidden_outcome.proposal.state(),
         ProposedTaskGraphState::PolicyRejected
     );
+    assert_eq!(
+        forbidden_outcome.errors[0].field_path,
+        "/proposed_tasks/0/provider"
+    );
     assert!(!format!("{forbidden_outcome:?}").contains("raw rejected value"));
     Ok(())
 }
@@ -422,6 +426,16 @@ fn non_low_risk_and_high_risk_task_types_are_rejected_without_verification()
     );
     assert_eq!(executable_outcome.proposal.central_risk_level(), "medium");
     assert!(executable_outcome.plan_verification_task.is_none());
+
+    let mut invalid_execution_policy = valid_graph();
+    invalid_execution_policy["proposed_tasks"][0]["execution_policy"] = json!("execute_shell");
+    let policy_outcome = validate_proposed_task_graph(invalid_execution_policy, graph_context()?)?;
+    assert_eq!(
+        policy_outcome.proposal.state(),
+        ProposedTaskGraphState::PolicyRejected
+    );
+    assert_eq!(policy_outcome.proposal.central_risk_level(), "medium");
+    assert!(policy_outcome.plan_verification_task.is_none());
     Ok(())
 }
 
