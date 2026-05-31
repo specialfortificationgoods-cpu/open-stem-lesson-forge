@@ -719,13 +719,14 @@ pub fn write_dummy_artifact_bundle(
                 license: "CC-BY-4.0".to_owned(),
                 ai_assisted: true,
                 contents: vec![
+                    "manifest.json".to_owned(),
                     "worksheet.md".to_owned(),
                     "answer_key.md".to_owned(),
                     "checker.py".to_owned(),
                     "teacher_notes.md".to_owned(),
                 ],
                 known_limitations: vec![
-                    "Not yet reviewed by a qualified physics teacher.".to_owned(),
+                    "Curriculum standard alignment requires teacher review.".to_owned(),
                 ],
             },
         },

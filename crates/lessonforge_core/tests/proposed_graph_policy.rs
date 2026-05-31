@@ -18,7 +18,7 @@ fn valid_mvp_graph_policy_passes_and_creates_verification_task() -> Result<(), B
     assert_eq!(outcome.decision, ValidationDecision::Accepted);
     assert_eq!(
         outcome.proposal.state(),
-        ProposedTaskGraphState::VerificationRequired
+        ProposedTaskGraphState::SchemaPolicyValidated
     );
     assert_eq!(outcome.proposal.central_risk_level(), "low");
     assert_eq!(outcome.errors, Vec::new());
@@ -196,6 +196,7 @@ fn promotion_requires_independent_accepted_verification() -> Result<(), Box<dyn 
 
     let blocking = outcome
         .proposal
+        .require_plan_verification()?
         .apply_plan_verification(PlanVerificationEvidence {
             plan_verification_task_id: plan_task.plan_verification_task_id.clone(),
             proposal_id: outcome.proposal.proposal_id().clone(),
@@ -216,6 +217,7 @@ fn promotion_requires_independent_accepted_verification() -> Result<(), Box<dyn 
 
     let forged = outcome
         .proposal
+        .require_plan_verification()?
         .apply_plan_verification(PlanVerificationEvidence {
             plan_verification_task_id: PlanVerificationTaskId::try_from("pvtask_other")?,
             proposal_id: outcome.proposal.proposal_id().clone(),
@@ -242,6 +244,7 @@ fn verified_low_risk_graph_promotes_transactionally_and_replay_is_idempotent()
     };
     let verified = outcome
         .proposal
+        .require_plan_verification()?
         .apply_plan_verification(PlanVerificationEvidence {
             plan_verification_task_id: plan_task.plan_verification_task_id,
             proposal_id: outcome.proposal.proposal_id().clone(),
@@ -307,6 +310,7 @@ fn verified_low_risk_graph_promotes_transactionally_and_replay_is_idempotent()
         "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         &mut ledger,
     )?;
+    assert_eq!(replay.state.as_str(), "accepted");
     assert_eq!(replay.work_packets.len(), 3);
     assert_eq!(ledger.work_packet_count(), 3);
 
@@ -373,6 +377,7 @@ fn verified_low_risk_graph_promotes_transactionally_and_replay_is_idempotent()
         "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         &mut ledger,
     )?;
+    assert_eq!(proposal_replay.state.as_str(), "already_promoted");
     assert_eq!(proposal_replay.work_packets, promotion.work_packets);
     assert_eq!(ledger.work_packet_count(), 3);
 
@@ -459,6 +464,7 @@ fn promotion_rejects_duplicate_work_packet_ids_before_ledger_mutation() -> Resul
     };
     let verified = outcome
         .proposal
+        .require_plan_verification()?
         .apply_plan_verification(PlanVerificationEvidence {
             plan_verification_task_id: plan_task.plan_verification_task_id,
             proposal_id: outcome.proposal.proposal_id().clone(),

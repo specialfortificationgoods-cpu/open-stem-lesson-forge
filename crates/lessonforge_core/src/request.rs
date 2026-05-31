@@ -540,10 +540,10 @@ fn optional_visibility(
     object: &serde_json::Map<String, Value>,
     default: StoredRequestVisibility,
 ) -> Result<StoredRequestVisibility, RequestWorkflowError> {
-    match object.get("visibility").and_then(Value::as_str) {
+    match object.get("visibility") {
         None => Ok(default),
-        Some("public") => Ok(StoredRequestVisibility::Public),
-        Some("private") => Ok(StoredRequestVisibility::Private),
+        Some(Value::String(value)) if value == "public" => Ok(StoredRequestVisibility::Public),
+        Some(Value::String(value)) if value == "private" => Ok(StoredRequestVisibility::Private),
         Some(_) => Err(RequestWorkflowError::Rejected {
             reason: IntakeRejectionReason::InvalidField,
             field_path: "/visibility".to_owned(),

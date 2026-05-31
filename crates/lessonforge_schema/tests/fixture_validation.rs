@@ -265,6 +265,30 @@ fn fixture_set_rejects_schema_and_example_drift() -> Result<(), Box<dyn Error>> 
         &workspace_root().join("examples").join("mvp"),
         &temp.path().join("examples").join("mvp"),
     )?;
+    let mut graph_with_empty_review_output = valid_graph();
+    graph_with_empty_review_output["proposed_tasks"][2]["outputs"] = json!([]);
+    fs::write(
+        temp.path()
+            .join("examples")
+            .join("mvp")
+            .join("proposed_task_graph.valid.json"),
+        serde_json::to_string_pretty(&graph_with_empty_review_output)?,
+    )?;
+    let nested_schema_error = match verify_fixture_set(temp.path()) {
+        Ok(_) => return Err("schema should reject empty review outputs".into()),
+        Err(error) => error,
+    };
+    assert_eq!(nested_schema_error.code, "fixture_schema_validation_failed");
+    assert_eq!(nested_schema_error.field_path, "/proposed_tasks/2/outputs");
+
+    copy_tree(
+        &workspace_root().join("schemas"),
+        &temp.path().join("schemas"),
+    )?;
+    copy_tree(
+        &workspace_root().join("examples").join("mvp"),
+        &temp.path().join("examples").join("mvp"),
+    )?;
     fs::write(
         temp.path()
             .join("examples")

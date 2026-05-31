@@ -141,18 +141,12 @@ impl DeterministicWorkflow {
         &mut self,
         report: ModerationReportSubmission,
     ) -> Result<ModerationApplicationOutcome, RequestWorkflowError> {
+        let payload_digest = moderation_report_payload_digest(&report);
         let Some(request) = &self.request else {
             return Err(RequestWorkflowError::ModerationRejected {
                 reason: "request_not_found",
             });
         };
-        if let Some(stored) = &self.moderation_outcome
-            && stored.report_id == report.request_moderation_report_id
-            && stored.task_id == report.request_moderation_task_id
-            && stored.lease_id == report.lease_id
-        {
-            return Ok(stored.outcome.clone());
-        }
         let Some(claim) = &self.moderation_claim else {
             return Err(RequestWorkflowError::ModerationRejected {
                 reason: "moderation_lease_not_found",
@@ -178,7 +172,22 @@ impl DeterministicWorkflow {
             actor_scope_matches: true,
             actor_can_moderate: true,
         };
-        let report_id = report.request_moderation_report_id.clone();
+        if Lease::claim_token_hash(&report.claim_token) != claim.claim_token_hash {
+            return Err(RequestWorkflowError::ModerationRejected {
+                reason: "moderation_claim_token_invalid",
+            });
+        }
+        if let Some(stored) = &self.moderation_outcome
+            && stored.task_id == report.request_moderation_task_id
+            && stored.lease_id == report.lease_id
+        {
+            if stored.payload_digest == payload_digest {
+                return Ok(stored.outcome.clone());
+            }
+            return Err(RequestWorkflowError::ModerationRejected {
+                reason: "moderation_report_conflict",
+            });
+        }
         let task_id = report.request_moderation_task_id.clone();
         let lease_id = report.lease_id.clone();
         let outcome = apply_moderation_report(request, context, report)?;
@@ -189,9 +198,9 @@ impl DeterministicWorkflow {
             self.planning_tasks.push(planning_task.clone());
         }
         self.moderation_outcome = Some(StoredModerationOutcome {
-            report_id,
             task_id,
             lease_id,
+            payload_digest,
             outcome: outcome.clone(),
         });
         Ok(outcome)
@@ -533,9 +542,9 @@ struct ModerationClaim {
 
 #[derive(Debug, Clone)]
 struct StoredModerationOutcome {
-    report_id: lessonforge_core::ids::RequestModerationReportId,
     task_id: RequestModerationTaskId,
     lease_id: LeaseId,
+    payload_digest: String,
     outcome: ModerationApplicationOutcome,
 }
 
@@ -738,6 +747,31 @@ fn append_len(canonical: &mut String, label: &str, value: &str) {
     canonical.push_str(&value.len().to_string());
     canonical.push(':');
     canonical.push_str(value);
+}
+
+fn moderation_report_payload_digest(report: &ModerationReportSubmission) -> String {
+    let mut canonical = String::new();
+    append_len(
+        &mut canonical,
+        "request_moderation_task_id",
+        report.request_moderation_task_id.as_str(),
+    );
+    append_len(&mut canonical, "request_id", report.request_id.as_str());
+    append_len(&mut canonical, "lease_id", report.lease_id.as_str());
+    append_serialized(&mut canonical, "moderation_kind", &report.moderation_kind);
+    append_serialized(&mut canonical, "decision", &report.decision);
+    append_serialized(&mut canonical, "category_flags", &report.category_flags);
+    append_serialized(
+        &mut canonical,
+        "safe_reason_codes",
+        &report.safe_reason_codes,
+    );
+    digest_hex(canonical)
+}
+
+fn append_serialized<T: serde::Serialize>(canonical: &mut String, label: &str, value: &T) {
+    let encoded = serde_json::to_string(value).unwrap_or_else(|_| "null".to_owned());
+    append_len(canonical, label, &encoded);
 }
 
 fn digest_hex(input: String) -> String {

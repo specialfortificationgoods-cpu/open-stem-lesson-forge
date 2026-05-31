@@ -159,6 +159,24 @@ impl ProposedTaskGraphRecord {
         };
         Ok(verified)
     }
+
+    pub fn require_plan_verification(&self) -> Result<Self, GraphPolicyError> {
+        if self.state != ProposedTaskGraphState::SchemaPolicyValidated {
+            return Err(GraphPolicyError::new(
+                "proposal_not_schema_policy_validated",
+                "/proposal/state",
+            ));
+        }
+        if self.plan_verification_task_id.is_none() {
+            return Err(GraphPolicyError::new(
+                "verification_task_lineage_missing",
+                "/proposal/plan_verification_task_id",
+            ));
+        }
+        let mut proposal = self.clone();
+        proposal.state = ProposedTaskGraphState::VerificationRequired;
+        Ok(proposal)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -264,12 +282,14 @@ pub struct PromotionDecisionRecord {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PromotionDecisionState {
     Accepted,
+    AlreadyPromoted,
 }
 
 impl PromotionDecisionState {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Accepted => "accepted",
+            Self::AlreadyPromoted => "already_promoted",
         }
     }
 }
@@ -387,7 +407,7 @@ fn validate_proposed_task_graph_inner(
     let mut errors = Vec::new();
     collect_policy_errors(&submitted, &context, &mut errors);
     if errors.is_empty() {
-        proposal.state = ProposedTaskGraphState::VerificationRequired;
+        proposal.state = ProposedTaskGraphState::SchemaPolicyValidated;
         proposal.plan_verification_task_id = Some(context.plan_verification_task_id.clone());
         proposal.mvp_policy_fingerprint = Some(mvp_policy_fingerprint(&proposal.tasks));
         let plan_verification_task =
@@ -436,7 +456,9 @@ pub fn promote_verified_proposal(
     }
 
     if let Some(existing) = ledger.decisions_by_proposal.get(&proposal.proposal_id) {
-        return Ok(existing.clone());
+        let mut no_op = existing.clone();
+        no_op.state = PromotionDecisionState::AlreadyPromoted;
+        return Ok(no_op);
     }
 
     let work_packets = materialize_work_packets(proposal, &ids)?;

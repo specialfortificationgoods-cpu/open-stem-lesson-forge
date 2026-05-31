@@ -613,13 +613,16 @@ fn validate_markdown(
     manifest: &Option<ArtifactManifest>,
     builder: &mut ReportBuilder,
 ) {
-    if bundle.is_none() {
+    let Some(bundle) = bundle else {
         return;
-    }
+    };
     let mut pii_failed = false;
     let mut inappropriate_failed = false;
     let mut secret_failed = false;
     for file in MARKDOWN_FILES {
+        if !bundle.root_files.contains(file) || !bundle.text_files.contains(file) {
+            continue;
+        }
         let Some(text) = read_utf8_file(bundle_root, file) else {
             continue;
         };

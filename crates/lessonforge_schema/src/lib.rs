@@ -55,15 +55,15 @@ pub struct FixtureVerificationReport {
 pub struct SchemaError {
     pub schema: SchemaName,
     pub code: &'static str,
-    pub field_path: &'static str,
+    pub field_path: String,
 }
 
 impl SchemaError {
-    fn new(schema: SchemaName, code: &'static str, field_path: &'static str) -> Self {
+    fn new(schema: SchemaName, code: &'static str, field_path: impl Into<String>) -> Self {
         Self {
             schema,
             code,
-            field_path,
+            field_path: field_path.into(),
         }
     }
 }
@@ -927,7 +927,7 @@ fn validate_schema_value(
     schema_name: SchemaName,
     schema: &Value,
     value: &Value,
-    field_path: &'static str,
+    field_path: &str,
 ) -> Result<(), SchemaError> {
     if let Some(any_of) = schema.get("anyOf").and_then(Value::as_array) {
         let mut matched = false;
@@ -992,7 +992,7 @@ fn validate_schema_object(
     schema_name: SchemaName,
     schema: &Value,
     value: &Value,
-    field_path: &'static str,
+    field_path: &str,
 ) -> Result<(), SchemaError> {
     let Some(object) = value.as_object() else {
         return Err(SchemaError::new(
@@ -1036,7 +1036,8 @@ fn validate_schema_object(
     if let Some(properties) = properties {
         for (key, property_schema) in properties {
             if let Some(nested) = object.get(key) {
-                validate_schema_value(schema_name, property_schema, nested, field_path)?;
+                let child_path = json_pointer_child(field_path, key);
+                validate_schema_value(schema_name, property_schema, nested, &child_path)?;
             }
         }
     }
@@ -1047,7 +1048,7 @@ fn validate_schema_array(
     schema_name: SchemaName,
     schema: &Value,
     value: &Value,
-    field_path: &'static str,
+    field_path: &str,
 ) -> Result<(), SchemaError> {
     let Some(items) = value.as_array() else {
         return Err(SchemaError::new(
@@ -1088,12 +1089,14 @@ fn validate_schema_array(
         }
     }
     if let Some(prefix_items) = schema.get("prefixItems").and_then(Value::as_array) {
-        for (item, item_schema) in items.iter().zip(prefix_items) {
-            validate_schema_value(schema_name, item_schema, item, field_path)?;
+        for (index, (item, item_schema)) in items.iter().zip(prefix_items).enumerate() {
+            let child_path = json_pointer_child(field_path, &index.to_string());
+            validate_schema_value(schema_name, item_schema, item, &child_path)?;
         }
     } else if let Some(item_schema) = schema.get("items") {
-        for item in items {
-            validate_schema_value(schema_name, item_schema, item, field_path)?;
+        for (index, item) in items.iter().enumerate() {
+            let child_path = json_pointer_child(field_path, &index.to_string());
+            validate_schema_value(schema_name, item_schema, item, &child_path)?;
         }
     }
     Ok(())
@@ -1103,7 +1106,7 @@ fn validate_schema_string(
     schema_name: SchemaName,
     schema: &Value,
     value: &Value,
-    field_path: &'static str,
+    field_path: &str,
 ) -> Result<(), SchemaError> {
     let Some(text) = value.as_str() else {
         return Err(SchemaError::new(
@@ -1555,12 +1558,21 @@ fn require_eq(
     schema: SchemaName,
     condition: bool,
     code: &'static str,
-    field_path: &'static str,
+    field_path: impl Into<String>,
 ) -> Result<(), SchemaError> {
     if condition {
         Ok(())
     } else {
         Err(SchemaError::new(schema, code, field_path))
+    }
+}
+
+fn json_pointer_child(parent: &str, child: &str) -> String {
+    let escaped = child.replace('~', "~0").replace('/', "~1");
+    if parent == "/" {
+        format!("/{escaped}")
+    } else {
+        format!("{parent}/{escaped}")
     }
 }
 

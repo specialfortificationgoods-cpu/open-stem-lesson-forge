@@ -155,6 +155,17 @@ fn dummy_generator_writes_valid_bundle_and_authoritative_digests() -> Result<(),
 
     let manifest: serde_json::Value =
         serde_json::from_slice(&std::fs::read(output_dir.join("manifest.json"))?)?;
+    assert_eq!(
+        output.artifact_bundle_reference.manifest_summary.contents,
+        serde_json::from_value::<Vec<String>>(manifest["contents"].clone())?
+    );
+    assert_eq!(
+        output
+            .artifact_bundle_reference
+            .manifest_summary
+            .known_limitations,
+        serde_json::from_value::<Vec<String>>(manifest["known_limitations"].clone())?
+    );
     validate_artifact_manifest(&manifest)?;
 
     let validation_context = ArtifactValidationContext {

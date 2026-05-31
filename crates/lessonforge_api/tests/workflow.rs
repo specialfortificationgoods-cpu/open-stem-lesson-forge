@@ -191,8 +191,36 @@ fn stale_or_changed_moderation_submission_does_not_duplicate_planning() -> Resul
     };
 
     workflow.submit_moderation_report(report)?;
-    let changed_report = ModerationReportSubmission {
+    let replay_report = ModerationReportSubmission {
         request_moderation_report_id: RequestModerationReportId::try_from("rmreport_energy_002")?,
+        request_moderation_task_id: intake.moderation_task.task_id.clone(),
+        request_id: intake.request.request_id.clone(),
+        lease_id: LeaseId::try_from("lease_rmoderation_energy_001")?,
+        claim_token: "moderation-claim-token".to_owned(),
+        moderation_kind: ModerationKind::DummyFixture,
+        decision: ModerationDecision::AllowMvpPlanning,
+        category_flags: vec![ModerationCategory::None],
+        safe_reason_codes: vec![ModerationSafeReason::ModerationAllowed],
+    };
+    workflow.submit_moderation_report(replay_report)?;
+    let wrong_token_replay = ModerationReportSubmission {
+        request_moderation_report_id: RequestModerationReportId::try_from("rmreport_energy_003")?,
+        request_moderation_task_id: intake.moderation_task.task_id.clone(),
+        request_id: intake.request.request_id.clone(),
+        lease_id: LeaseId::try_from("lease_rmoderation_energy_001")?,
+        claim_token: "wrong-moderation-claim-token".to_owned(),
+        moderation_kind: ModerationKind::DummyFixture,
+        decision: ModerationDecision::AllowMvpPlanning,
+        category_flags: vec![ModerationCategory::None],
+        safe_reason_codes: vec![ModerationSafeReason::ModerationAllowed],
+    };
+    assert!(
+        workflow
+            .submit_moderation_report(wrong_token_replay)
+            .is_err()
+    );
+    let changed_report = ModerationReportSubmission {
+        request_moderation_report_id: RequestModerationReportId::try_from("rmreport_energy_004")?,
         request_moderation_task_id: intake.moderation_task.task_id,
         request_id: intake.request.request_id,
         lease_id: LeaseId::try_from("lease_rmoderation_energy_001")?,
