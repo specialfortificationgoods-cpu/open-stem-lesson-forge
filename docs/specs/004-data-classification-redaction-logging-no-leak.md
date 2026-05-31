@@ -157,6 +157,7 @@ Allowed fields:
 - `capabilities.languages`
 - `capabilities.phases`
 - `capabilities.task_types`
+- `capabilities.workflow_capabilities`
 - `capabilities.artifact_types`
 - `capabilities.tools`
 - `trust_level`

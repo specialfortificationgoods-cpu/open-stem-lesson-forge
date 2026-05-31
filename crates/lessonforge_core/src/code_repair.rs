@@ -1699,17 +1699,18 @@ fn validate_safe_location(value: &str) -> Result<(), CodeRepairPolicyError> {
 }
 
 fn validate_safe_message(value: &str) -> Result<(), CodeRepairPolicyError> {
+    let uses_closed_evidence_vocabulary = safe_message_uses_closed_evidence_vocabulary(value);
     if value.is_empty()
         || value.len() > 240
         || contains_forbidden_submitted_text(value)
         || !value.chars().all(is_safe_message_char)
         || looks_like_code_snippet(value)
         || looks_like_control_flow_snippet(value)
-        || looks_like_prompt_or_command(value)
+        || (!uses_closed_evidence_vocabulary && looks_like_prompt_or_command(value))
         || contains_function_call_shape(value)
         || looks_like_bare_domain(value)
         || looks_like_secret(value)
-        || !safe_message_uses_closed_evidence_vocabulary(value)
+        || !uses_closed_evidence_vocabulary
     {
         return Err(CodeRepairPolicyError::UnsafeSubmittedText {
             field: "safe_message",

@@ -95,6 +95,7 @@ subjects = ["physics"]
 languages = ["en"]
 phases = ["request_normalization"]
 task_types = ["propose_task_graph"]
+workflow_capabilities = ["request_interpretation", "request_normalization", "task_decomposition", "policy_reasoning"]
 artifact_types = ["worksheet", "answer_key", "python_checker", "teacher_notes"]
 tools = ["structured_json_output"]
 max_risk_level = "low"
@@ -247,6 +248,12 @@ The runner may submit or expose this central-safe summary:
     "task_types": [
       "propose_task_graph"
     ],
+    "workflow_capabilities": [
+      "request_interpretation",
+      "request_normalization",
+      "task_decomposition",
+      "policy_reasoning"
+    ],
     "artifact_types": ["worksheet", "answer_key", "python_checker", "teacher_notes"],
     "tools": ["structured_json_output"],
     "automated_repair_loop_opt_in": false,
@@ -268,6 +275,7 @@ Summary rules:
 - `trust_level` is central-assigned or centrally accepted config, not self-granted authority.
 - Capability summary is eligibility input only. It does not make runner output authoritative.
 - Central API may reject or reduce capabilities regardless of runner claims.
+- Planner claim checks evaluate `workflow_capabilities` and `tools` together under spec `006`; for example, MVP planning eligibility requires `request_interpretation`, `request_normalization`, `task_decomposition`, `policy_reasoning`, and `structured_json_output`.
 - `automated_repair_loop_opt_in` is allowed only for `dummy_code_repairer_auto_loop` and future reviewed repair modes.
 - `automated_repair_attempt_bucket` values are `0`, `1`, or `2`; exact private quota or budget is never reported.
 
@@ -281,7 +289,7 @@ Spec `014` code-review/repair summary values:
 | `dummy_code_repairer` | `["code_repair"]` | `["repair_generated_code"]` | `["structured_json_output", "sandboxed_python_checker_repair"]` | `automated_repair_loop_opt_in=false`, `automated_repair_attempt_bucket="0"` |
 | `dummy_code_repairer_auto_loop` | `["code_repair"]` | `["repair_generated_code"]` | `["structured_json_output", "sandboxed_python_checker_repair"]` | `automated_repair_loop_opt_in=true`, `automated_repair_attempt_bucket="1"` or `"2"` |
 
-Unknown phases, task types, tools, or automated repair fields are rejected.
+Unknown phases, task types, workflow capabilities, tools, or automated repair fields are rejected.
 
 ## Runner CLI Commands
 
@@ -348,6 +356,10 @@ Local retry rules:
 - Timeout after response unknown: retry same request with same idempotency key.
 - `409 idempotency_conflict`: stop and require operator intervention.
 - `429`: back off according to server response or local exponential backoff, whichever is stricter.
+
+Planner eligibility rule:
+
+- For spec `006` request-to-task planning claims, the central backend evaluates the runner summary's `workflow_capabilities` plus `tools`; `phases` and `task_types` route candidate tasks but do not substitute for semantic planning capabilities such as `request_interpretation`, `task_decomposition`, and `policy_reasoning`.
 
 Claim timeout rule:
 

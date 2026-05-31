@@ -536,7 +536,8 @@ Set `status_claim` to `machine_validated`, `peer_reviewed`, or `classroom_ready`
 
 Expected:
 
-- Manifest is rejected or accepted only as non-authoritative metadata according to schema rule.
+- Manifest is rejected for any `status_claim` other than the schema-required `draft_generated`.
+- `draft_generated` is accepted only as non-authoritative metadata and never raises state.
 - Artifact state remains central-state-derived.
 
 ### ART-005: Lineage mismatch fails

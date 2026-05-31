@@ -7,7 +7,14 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::{self, OpenOptions};
 use std::io::{Read as _, Write as _};
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "ios",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::{Component, Path, PathBuf};
 
@@ -18,6 +25,13 @@ const MAX_ED25519_KEY_FILE_BYTES: u64 = 1024;
 const O_NOFOLLOW_FLAG: i32 = 0x0000_0100;
 #[cfg(target_os = "linux")]
 const O_NOFOLLOW_FLAG: i32 = 0x0002_0000;
+#[cfg(any(
+    target_os = "ios",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
+const O_NOFOLLOW_FLAG: i32 = 0x0000_0100;
 
 pub fn crate_boundary() -> &'static str {
     "local_runner"
@@ -147,6 +161,7 @@ pub struct CapabilityConfig {
     pub languages: Vec<String>,
     pub phases: Vec<String>,
     pub task_types: Vec<String>,
+    pub workflow_capabilities: Vec<String>,
     pub artifact_types: Vec<String>,
     pub tools: Vec<String>,
 }
@@ -157,25 +172,34 @@ impl CapabilityConfig {
     }
 
     fn for_mode(mode: RunnerMode) -> Self {
-        let (phases, task_types, tools) = match mode {
+        let (phases, task_types, workflow_capabilities, tools) = match mode {
             RunnerMode::DummyRequestModerator => (
                 vec!["request_moderation"],
                 vec!["moderate_request"],
+                vec!["content_moderation", "age_appropriateness_classification"],
                 vec!["structured_json_output"],
             ),
             RunnerMode::DummyPlanner => (
                 vec!["request_normalization"],
                 vec!["propose_task_graph"],
+                vec![
+                    "request_interpretation",
+                    "request_normalization",
+                    "task_decomposition",
+                    "policy_reasoning",
+                ],
                 vec!["structured_json_output"],
             ),
             RunnerMode::DummyPlanVerifier => (
                 vec!["plan_verification"],
                 vec!["verify_proposed_task_graph"],
+                vec!["plan_verification", "policy_reasoning"],
                 vec!["structured_json_output"],
             ),
             RunnerMode::DummyGenerator => (
                 vec!["artifact_generation"],
                 vec!["generate_lesson_pack"],
+                vec!["stem_pedagogy", "structured_markdown", "basic_python"],
                 vec![
                     "structured_json_output",
                     "sandboxed_python_checker_self_test",
@@ -184,6 +208,7 @@ impl CapabilityConfig {
             RunnerMode::DummyCodeCritic => (
                 vec!["code_critique"],
                 vec!["critique_generated_code"],
+                vec!["code_review", "python_checker_static_analysis"],
                 vec![
                     "structured_json_output",
                     "sandboxed_python_checker_critique",
@@ -192,6 +217,7 @@ impl CapabilityConfig {
             RunnerMode::DummyCodeRepairer | RunnerMode::DummyCodeRepairerAutoLoop => (
                 vec!["code_repair"],
                 vec!["repair_generated_code"],
+                vec!["code_repair", "python_checker_repair"],
                 vec!["structured_json_output", "sandboxed_python_checker_repair"],
             ),
         };
@@ -200,6 +226,7 @@ impl CapabilityConfig {
             languages: vec!["en".to_owned()],
             phases: strings(phases),
             task_types: strings(task_types),
+            workflow_capabilities: strings(workflow_capabilities),
             artifact_types: strings(["worksheet", "answer_key", "python_checker", "teacher_notes"]),
             tools: strings(tools),
         }
@@ -264,6 +291,7 @@ pub struct RedactedCapabilities {
     pub languages: Vec<String>,
     pub phases: Vec<String>,
     pub task_types: Vec<String>,
+    pub workflow_capabilities: Vec<String>,
     pub artifact_types: Vec<String>,
     pub tools: Vec<String>,
     pub automated_repair_loop_opt_in: bool,
@@ -345,6 +373,7 @@ pub fn capability_summary(
             languages: config.capabilities.languages.clone(),
             phases: config.capabilities.phases.clone(),
             task_types: config.capabilities.task_types.clone(),
+            workflow_capabilities: config.capabilities.workflow_capabilities.clone(),
             artifact_types: config.capabilities.artifact_types.clone(),
             tools: config.capabilities.tools.clone(),
             automated_repair_loop_opt_in: config.policy.automated_repair_loop_opt_in,
@@ -742,9 +771,18 @@ fn write_new_file_without_following_symlinks(
     path: &Path,
     bytes: &[u8],
 ) -> Result<(), RunnerOutputError> {
+    // Supported Unix targets use O_NOFOLLOW at open time; other targets rely
+    // on reject_existing_symlink_workspace_descendants to reduce TOCTOU risk.
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(
+        target_os = "macos",
+        target_os = "linux",
+        target_os = "ios",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
     {
         options.custom_flags(O_NOFOLLOW_FLAG);
     }
@@ -1053,37 +1091,29 @@ fn read_bounded_ed25519_key_file(path: &Path) -> Result<Vec<u8>, std::io::Error>
     Ok(bytes)
 }
 
-#[cfg(unix)]
+#[cfg(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "ios",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
 fn open_key_file_without_following_symlinks(path: &Path) -> Result<fs::File, std::io::Error> {
-    use std::os::unix::fs::OpenOptionsExt;
-
-    #[cfg(target_os = "linux")]
-    const O_NOFOLLOW: i32 = 0o400000;
-    #[cfg(any(
-        target_os = "macos",
-        target_os = "ios",
-        target_os = "freebsd",
-        target_os = "netbsd",
-        target_os = "openbsd"
-    ))]
-    const O_NOFOLLOW: i32 = 0x0100;
-    #[cfg(not(any(
-        target_os = "linux",
-        target_os = "macos",
-        target_os = "ios",
-        target_os = "freebsd",
-        target_os = "netbsd",
-        target_os = "openbsd"
-    )))]
-    const O_NOFOLLOW: i32 = 0;
-
     fs::OpenOptions::new()
         .read(true)
-        .custom_flags(O_NOFOLLOW)
+        .custom_flags(O_NOFOLLOW_FLAG)
         .open(path)
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "ios",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+)))]
 fn open_key_file_without_following_symlinks(path: &Path) -> Result<fs::File, std::io::Error> {
     fs::File::open(path)
 }
@@ -1361,6 +1391,7 @@ fn validate_summary_fields(config: &RunnerConfig) -> Result<(), RunnerConfigErro
         .chain(config.capabilities.languages.iter())
         .chain(config.capabilities.phases.iter())
         .chain(config.capabilities.task_types.iter())
+        .chain(config.capabilities.workflow_capabilities.iter())
         .chain(config.capabilities.artifact_types.iter())
         .chain(config.capabilities.tools.iter())
     {

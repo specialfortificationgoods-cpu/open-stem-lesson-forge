@@ -184,7 +184,7 @@ All mutating endpoints require:
 - Same key and different canonical body returns `409 idempotency_conflict`.
 - Replayed successful commands do not create duplicate records or transition events.
 
-The redacted canonical command hash excludes `claim_token`, bearer tokens, cookies, secret-like values, and any field classified as `Secret` or `Forbidden` by spec `004`. Claim tokens are verified transiently before idempotency lookup but their raw values, hashes, or fingerprints are not persisted.
+The redacted canonical command hash excludes raw `claim_token`, bearer tokens, cookies, secret-like values, and any field classified as `Secret` or `Forbidden` by spec `004`. Raw `claim_token` values are never persisted or re-displayed. A `Lease` may persist non-recoverable server-side verification material required by spec `005`, such as fixed-format claim-token hashes or fingerprints, so deterministic lease-token verification and idempotency lookup can work without storing raw secrets.
 
 Claim replay is special:
 

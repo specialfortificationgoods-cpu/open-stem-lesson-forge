@@ -15,6 +15,15 @@ fn dummy_planner_config_validates_and_emits_redacted_summary() -> Result<(), Box
     assert_eq!(summary.runner_id, "actor_planner_001");
     assert_eq!(summary.capabilities.phases, vec!["request_normalization"]);
     assert_eq!(summary.capabilities.task_types, vec!["propose_task_graph"]);
+    assert_eq!(
+        summary.capabilities.workflow_capabilities,
+        vec![
+            "request_interpretation",
+            "request_normalization",
+            "task_decomposition",
+            "policy_reasoning"
+        ]
+    );
     assert_eq!(summary.capabilities.tools, vec!["structured_json_output"]);
     assert!(!summary.capabilities.automated_repair_loop_opt_in);
     assert_eq!(summary.capabilities.automated_repair_attempt_bucket, "0");
@@ -180,6 +189,10 @@ fn automated_repair_loop_opt_in_is_allowed_only_for_auto_loop_mode() -> Result<(
     assert_eq!(
         summary.capabilities.task_types,
         vec!["repair_generated_code"]
+    );
+    assert_eq!(
+        summary.capabilities.workflow_capabilities,
+        vec!["code_repair", "python_checker_repair"]
     );
     assert_eq!(automated_repair_attempt_bucket(2), Some("2"));
     assert_eq!(automated_repair_attempt_bucket(3), None);
