@@ -249,6 +249,7 @@ fn pii_secret_url_and_attachment_inputs_reject_without_persisting_raw_values()
         ("constraints", json!(["phone 15551234567"])),
         ("constraints", json!(["phone 555-1234"])),
         ("constraints", json!(["phone is 555-1234"])),
+        ("constraints", json!(["cell phone: 555-1234"])),
         ("constraints", json!(["contact (555) 123-4567"])),
         ("constraints", json!(["sms 555 123 4567"])),
         ("constraints", json!(["call me 555 1234"])),

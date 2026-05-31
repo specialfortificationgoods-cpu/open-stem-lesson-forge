@@ -526,6 +526,7 @@ fn finding_policy_rejects_invalid_severity_unsafe_text_and_laundered_blocking_fl
         "my cell is 555-1234",
         "555-1234 cell",
         "cell phone is 555-1234",
+        "cell phone: 555-1234",
         "telephone 555-1234",
         "5551234 phone",
         "+44 20 7946 0958",

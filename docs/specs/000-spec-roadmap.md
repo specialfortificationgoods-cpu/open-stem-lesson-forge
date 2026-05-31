@@ -442,6 +442,9 @@ Implementation planning may begin only after specs `001` through `008`, plus the
 
 ## Current Open Decisions for User Approval
 
-None currently blocking spec drafting.
-- Minimum human review gate before task graph promotion.
-- Minimum human review gate before artifact `peer_reviewed`.
+None currently blocking spec drafting or MVP implementation.
+
+Previously open review-gate decisions are now resolved in specs `007` and `011`:
+
+- Task graph promotion requires independent accepted plan verification before work packets materialize.
+- Artifact `peer_reviewed` requires independent human reviewer approval after deterministic validation.
