@@ -512,6 +512,10 @@ fn finding_policy_rejects_invalid_severity_unsafe_text_and_laundered_blocking_fl
         r"C:\Users\alice\.codex\auth.json",
         ".codex/auth.json",
         "Student Alice scored 90",
+        "student: Alice",
+        "student = Alice",
+        "grade=90",
+        "grade : 90",
         "student roster: Bob Chen",
         "student@example.test",
         "Parent phone 555-123-4567",
@@ -587,6 +591,8 @@ fn finding_policy_rejects_invalid_severity_unsafe_text_and_laundered_blocking_fl
         "Use EAN 400 638 1333931 as an example identifier",
         "Compute 1+23456789 using mental math",
         "Compare 1/2 and 3/4 fractions",
+        "Use grade 9 examples for introductory physics",
+        "Students should compare energy transfers",
     ] {
         let mut safe_numeric_text = ReviewSubmission::approved_no_findings();
         safe_numeric_text.findings = vec![FindingInput {

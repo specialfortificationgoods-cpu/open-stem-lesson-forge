@@ -151,6 +151,34 @@ fn rejected_symlink_allowed_filename_is_not_read_into_authoritative_digests()
 }
 
 #[test]
+fn oversized_allowed_file_is_not_read_for_text_or_digests() -> Result<(), Box<dyn Error>> {
+    for (name, max_size) in [("worksheet.md", 64 * 1024), ("checker.py", 32 * 1024)] {
+        let temp = tempfile::tempdir()?;
+        write_valid_bundle(temp.path())?;
+        fs::write(temp.path().join(name), vec![0_u8; max_size + 1])?;
+
+        let report = validate_bundle(temp.path(), &context(CheckerExecutionMode::StaticOnly))?;
+
+        assert_eq!(report.status, ValidationReportStatus::Failed);
+        assert!(report.failure_codes().contains(&"file_size_limits_failed"));
+        assert!(report.failure_codes().contains(&"artifact_digest_mismatch"));
+        assert!(!report.failure_codes().contains(&"utf8_text_failed"));
+        if name == "checker.py" {
+            assert!(
+                !report
+                    .failure_codes()
+                    .contains(&"python_checker_static_safety_failed")
+            );
+        }
+        assert!(
+            compute_artifact_digests(temp.path(), &context(CheckerExecutionMode::StaticOnly))
+                .is_err()
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn context_bound_manifest_ids_are_not_hard_coded_to_fixture_ids() -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
     write_valid_bundle(temp.path())?;

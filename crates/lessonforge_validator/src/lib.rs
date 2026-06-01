@@ -315,6 +315,15 @@ pub fn compute_artifact_digests(
         if metadata.nlink() > 1 {
             return Err(ValidatorError::DigestUnavailable);
         }
+        let total_size = file_digests
+            .iter()
+            .fold(0u64, |total, record: &FileDigestRecord| {
+                total.saturating_add(record.size_bytes)
+            })
+            .saturating_add(metadata.len());
+        if !file_size_within_limits(path, metadata.len(), total_size) {
+            return Err(ValidatorError::DigestUnavailable);
+        }
         let bytes = fs::read(&full_path).map_err(|_| ValidatorError::DigestUnavailable)?;
         file_digests.push(FileDigestRecord {
             path: path.to_owned(),
@@ -494,9 +503,8 @@ fn inspect_bundle(bundle_root: &Path, builder: &mut ReportBuilder) -> Option<Ins
             continue;
         }
         bundle.total_size = bundle.total_size.saturating_add(metadata.len());
-        if metadata.len() > max_size_for_file(&name).unwrap_or(0)
-            || bundle.total_size > WHOLE_BUNDLE_MAX_BYTES
-        {
+        let oversized = !file_size_within_limits(&name, metadata.len(), bundle.total_size);
+        if oversized {
             builder.fail(
                 ValidationCheckName::FileSizeLimits,
                 "file_size_limits_failed",
@@ -507,6 +515,9 @@ fn inspect_bundle(bundle_root: &Path, builder: &mut ReportBuilder) -> Option<Ins
             continue;
         }
         bundle.root_files.insert(name.clone());
+        if oversized {
+            continue;
+        }
         if read_utf8_file(bundle_root, &name).is_some() {
             bundle.text_files.insert(name);
         } else {
@@ -530,7 +541,7 @@ fn validate_manifest(
 ) -> Option<ArtifactManifest> {
     if bundle
         .as_ref()
-        .is_none_or(|bundle| !bundle.root_files.contains("manifest.json"))
+        .is_none_or(|bundle| !bundle.text_files.contains("manifest.json"))
     {
         builder.fail(
             ValidationCheckName::ManifestSchema,
@@ -684,7 +695,7 @@ fn validate_checker(
 ) {
     let has_checker = bundle
         .as_ref()
-        .is_some_and(|bundle| bundle.root_files.contains("checker.py"));
+        .is_some_and(|bundle| bundle.text_files.contains("checker.py"));
     if has_checker {
         let Some(checker) = read_utf8_file(bundle_root, "checker.py") else {
             builder.fail(
@@ -1296,6 +1307,10 @@ fn max_size_for_file(name: &str) -> Option<u64> {
         "checker.py" => Some(32 * 1024),
         _ => None,
     }
+}
+
+fn file_size_within_limits(name: &str, file_size: u64, total_size: u64) -> bool {
+    file_size <= max_size_for_file(name).unwrap_or(0) && total_size <= WHOLE_BUNDLE_MAX_BYTES
 }
 
 fn safe_length(value: &str, min: usize, max: usize) -> bool {

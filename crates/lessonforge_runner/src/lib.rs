@@ -21,17 +21,6 @@ use std::path::{Component, Path, PathBuf};
 use thiserror::Error;
 
 const MAX_ED25519_KEY_FILE_BYTES: u64 = 1024;
-#[cfg(target_os = "macos")]
-const O_NOFOLLOW_FLAG: i32 = 0x0000_0100;
-#[cfg(target_os = "linux")]
-const O_NOFOLLOW_FLAG: i32 = 0x0002_0000;
-#[cfg(any(
-    target_os = "ios",
-    target_os = "freebsd",
-    target_os = "netbsd",
-    target_os = "openbsd"
-))]
-const O_NOFOLLOW_FLAG: i32 = 0x0000_0100;
 
 pub fn crate_boundary() -> &'static str {
     "local_runner"
@@ -784,7 +773,7 @@ fn write_new_file_without_following_symlinks(
         target_os = "openbsd"
     ))]
     {
-        options.custom_flags(O_NOFOLLOW_FLAG);
+        options.custom_flags(libc::O_NOFOLLOW);
     }
     let mut file = options
         .open(path)
@@ -1102,7 +1091,7 @@ fn read_bounded_ed25519_key_file(path: &Path) -> Result<Vec<u8>, std::io::Error>
 fn open_key_file_without_following_symlinks(path: &Path) -> Result<fs::File, std::io::Error> {
     fs::OpenOptions::new()
         .read(true)
-        .custom_flags(O_NOFOLLOW_FLAG)
+        .custom_flags(libc::O_NOFOLLOW)
         .open(path)
 }
 

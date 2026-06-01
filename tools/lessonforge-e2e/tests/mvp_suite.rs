@@ -55,7 +55,33 @@ fn single_case_runs_from_manifest() -> Result<(), Box<dyn Error>> {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(String::from_utf8_lossy(&output.stdout).contains("LEAK-004"));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("LEAK-004"));
+    assert!(stdout.contains("executed/passed via"));
+    Ok(())
+}
+
+#[test]
+fn single_delegated_case_is_not_reported_as_executed() -> Result<(), Box<dyn Error>> {
+    let output = Command::new(e2e())
+        .arg("--suite")
+        .arg("mvp")
+        .arg("--case")
+        .arg("CR-GATE-004")
+        .arg("--root")
+        .arg(workspace_root()?)
+        .output()?;
+
+    assert!(
+        output.status.success(),
+        "expected delegated manifest case to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("CR-GATE-004"));
+    assert!(stdout.contains("listed/delegated via"));
+    assert!(!stdout.contains("passed via"));
     Ok(())
 }
 

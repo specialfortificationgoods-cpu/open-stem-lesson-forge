@@ -814,11 +814,11 @@ fn contains_delimited_prefix(lower: &str, prefix: &str) -> bool {
 
 fn contains_student_pii_marker(value: &str, lower: &str) -> bool {
     lower.contains('@')
-        || lower.contains("student")
+        || contains_labeled_field(lower, "student")
         || lower.contains("roster")
         || lower.contains("scored")
         || lower.contains("score:")
-        || lower.contains("grade")
+        || contains_labeled_field(lower, "grade")
         || lower.contains("attendance")
         || lower.contains("parent")
         || lower.contains("guardian")
@@ -826,6 +826,24 @@ fn contains_student_pii_marker(value: &str, lower: &str) -> bool {
         || contains_grade_fraction(value, lower)
         || contains_titlecase_name_pair(value)
         || has_phone_like_number(value, lower)
+}
+
+fn contains_labeled_field(lower: &str, label: &str) -> bool {
+    let mut search_start = 0;
+    while let Some(relative_start) = lower[search_start..].find(label) {
+        let start = search_start.saturating_add(relative_start);
+        let end = start.saturating_add(label.len());
+        let before_ok = lower[..start]
+            .chars()
+            .next_back()
+            .is_none_or(|character| !character.is_ascii_alphanumeric() && character != '_');
+        let after = lower[end..].trim_start();
+        if before_ok && (after.starts_with(':') || after.starts_with('=')) {
+            return true;
+        }
+        search_start = end;
+    }
+    false
 }
 
 fn contains_percent_grade_marker(value: &str, lower: &str) -> bool {

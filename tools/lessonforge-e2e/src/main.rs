@@ -110,15 +110,19 @@ fn run() -> Result<String, String> {
         let Some(row) = rows.get(&case_id) else {
             return Err("unknown_case".to_owned());
         };
-        run_case(&args.root, row)?;
+        let case_execution = run_case(&args.root, row)?;
         let suffix = if matches!(row.id.as_str(), "LEAK-004" | "API-GATE-002") {
             " negative_unavailable_verified"
         } else {
             ""
         };
         return Ok(format!(
-            "{} {} passed via {}{}",
-            row.id, row.status, row.command, suffix
+            "{} {} {} via {}{}",
+            row.id,
+            row.status,
+            case_execution.label(),
+            row.command,
+            suffix
         ));
     }
 
@@ -220,10 +224,26 @@ fn validate_manifest(manifest: &Manifest) -> Result<BTreeMap<String, ManifestRow
     Ok(rows)
 }
 
-fn run_case(root: &Path, row: &ManifestRow) -> Result<(), String> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CaseExecution {
+    Executed,
+    ListedDelegated,
+}
+
+impl CaseExecution {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Executed => "executed/passed",
+            Self::ListedDelegated => "listed/delegated",
+        }
+    }
+}
+
+fn run_case(root: &Path, row: &ManifestRow) -> Result<CaseExecution, String> {
     match row.id.as_str() {
-        "E2E-001" | "E2E-002" => run_full_mvp_smoke(root),
-        "LEAK-004" => verify_unavailable_transport_surface(root, &["/v1/events/stream"]),
+        "E2E-001" | "E2E-002" => run_full_mvp_smoke(root).map(|()| CaseExecution::Executed),
+        "LEAK-004" => verify_unavailable_transport_surface(root, &["/v1/events/stream"])
+            .map(|()| CaseExecution::Executed),
         "API-GATE-002" => verify_unavailable_transport_surface(
             root,
             &[
@@ -233,8 +253,9 @@ fn run_case(root: &Path, row: &ManifestRow) -> Result<(), String> {
                 "/v1/ws",
                 "/ws/command",
             ],
-        ),
-        _ => Ok(()),
+        )
+        .map(|()| CaseExecution::Executed),
+        _ => Ok(CaseExecution::ListedDelegated),
     }
 }
 

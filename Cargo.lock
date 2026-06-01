@@ -339,6 +339,7 @@ dependencies = [
  "lessonforge_core",
  "lessonforge_schema",
  "lessonforge_validator",
+ "libc",
  "serde",
  "serde_json",
  "serde_json_canonicalizer",
