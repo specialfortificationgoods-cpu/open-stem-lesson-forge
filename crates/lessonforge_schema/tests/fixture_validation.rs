@@ -222,6 +222,27 @@ fn fixture_set_rejects_schema_and_example_drift() -> Result<(), Box<dyn Error>> 
         &workspace_root().join("examples").join("mvp"),
         &temp.path().join("examples").join("mvp"),
     )?;
+    let mut subset_private_request = valid_request();
+    subset_private_request["desired_artifacts"] = json!(["worksheet", "teacher_notes"]);
+    subset_private_request["visibility"] = json!("private");
+    fs::write(
+        temp.path()
+            .join("examples")
+            .join("mvp")
+            .join("request.valid.json"),
+        serde_json::to_string_pretty(&subset_private_request)?,
+    )?;
+    let subset_private_report = verify_fixture_set(temp.path())?;
+    assert_eq!(subset_private_report.checked_fixture_count, 5);
+
+    copy_tree(
+        &workspace_root().join("schemas"),
+        &temp.path().join("schemas"),
+    )?;
+    copy_tree(
+        &workspace_root().join("examples").join("mvp"),
+        &temp.path().join("examples").join("mvp"),
+    )?;
     fs::write(
         temp.path().join("schemas").join("request.schema.json"),
         "{ not json",

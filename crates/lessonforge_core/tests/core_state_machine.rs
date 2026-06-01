@@ -124,10 +124,9 @@ fn planning_task_transitions_reopen_on_retryable_lease_end() {
         PlanningTaskState::Submitted.transition(PlanningTaskTransition::Complete),
         Ok(PlanningTaskState::Completed)
     );
-    assert!(
-        PlanningTaskState::Claimed
-            .transition(PlanningTaskTransition::LeaseExpiredOrReleased)
-            .is_err()
+    assert_eq!(
+        PlanningTaskState::Claimed.transition(PlanningTaskTransition::LeaseExpiredOrReleased),
+        Ok(PlanningTaskState::Open)
     );
     assert_eq!(
         PlanningTaskState::Claimed.after_lease_end(PlanningLeaseFacts {
@@ -342,6 +341,10 @@ fn work_packet_transitions_cover_dependency_submission_interruption_and_cancel()
     assert_eq!(
         WorkPacketState::Open.transition(WorkPacketTransition::Claim),
         Ok(WorkPacketState::Claimed)
+    );
+    assert_eq!(
+        WorkPacketState::Claimed.transition(WorkPacketTransition::LeaseExpiredOrReleased),
+        Ok(WorkPacketState::Open)
     );
     assert_eq!(
         WorkPacketState::Claimed.transition(WorkPacketTransition::Submit),

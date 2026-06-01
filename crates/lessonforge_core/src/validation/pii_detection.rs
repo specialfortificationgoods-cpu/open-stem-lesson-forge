@@ -31,17 +31,21 @@ fn contains_unformatted_us_phone_candidate(value: &str, lower: &str) -> bool {
         }
         let base = &candidate[..end];
         let groups = digit_group_lengths(base);
-        if matches!(groups.as_slice(), [11]) && base.starts_with('1') {
-            return true;
-        }
-        if matches!(groups.as_slice(), [10]) && identifier_context_before_candidate(lower, start) {
+        if matches!(groups.as_slice(), [10] | [11])
+            && identifier_context_before_candidate(lower, start)
+        {
             continue;
         }
         let context_before = phone_context_before_candidate(lower, start);
         let context_after = phone_context_after_candidate(lower, start + end);
         let extension_after = phone_extension_after_candidate(lower, start + end);
-        if matches!(groups.as_slice(), [10])
-            && (context_before || context_after || extension_after || !base.starts_with('0'))
+        if matches!(groups.as_slice(), [10]) && (context_before || context_after || extension_after)
+        {
+            return true;
+        }
+        if matches!(groups.as_slice(), [11])
+            && base.starts_with('1')
+            && (context_before || context_after || extension_after)
         {
             return true;
         }
@@ -166,7 +170,17 @@ fn phone_extension_after_candidate(lowercase: &str, candidate_end: usize) -> boo
     let suffix = lowercase[candidate_end..].trim_start_matches(|character: char| {
         character.is_ascii_whitespace() || matches!(character, ':' | '-' | '.')
     });
-    suffix.starts_with('x') || suffix.starts_with("ext") || suffix.starts_with("extension")
+    suffix.starts_with('x') || ext_token_after_candidate(suffix) || suffix.starts_with("extension")
+}
+
+fn ext_token_after_candidate(suffix: &str) -> bool {
+    let Some(after_ext) = suffix.strip_prefix("ext") else {
+        return false;
+    };
+    after_ext
+        .chars()
+        .next()
+        .is_none_or(|character| !character.is_ascii_alphabetic())
 }
 
 fn identifier_context_before_candidate(lowercase: &str, candidate_start: usize) -> bool {

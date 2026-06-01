@@ -342,6 +342,7 @@ impl PlanningTaskState {
             (Self::Open, PlanningTaskTransition::Claim) => Ok(Self::Claimed),
             (Self::Claimed, PlanningTaskTransition::Claim) => Ok(Self::Claimed),
             (Self::Claimed, PlanningTaskTransition::Submit) => Ok(Self::Submitted),
+            (Self::Claimed, PlanningTaskTransition::LeaseExpiredOrReleased) => Ok(Self::Open),
             (Self::Submitted, PlanningTaskTransition::Complete) => Ok(Self::Completed),
             (Self::Open | Self::Claimed, PlanningTaskTransition::Cancel) => Ok(Self::Cancelled),
             _ => Err(transition_error(
@@ -398,6 +399,9 @@ macro_rules! claimable_state {
                 match (self, action) {
                     (Self::Open, PlanningTaskTransition::Claim) => Ok(Self::Claimed),
                     (Self::Claimed, PlanningTaskTransition::Submit) => Ok(Self::Submitted),
+                    (Self::Claimed, PlanningTaskTransition::LeaseExpiredOrReleased) => {
+                        Ok(Self::Open)
+                    }
                     (Self::Submitted, PlanningTaskTransition::Complete) => Ok(Self::Completed),
                     (Self::Open | Self::Claimed, PlanningTaskTransition::Cancel) => {
                         Ok(Self::Cancelled)
@@ -600,6 +604,7 @@ string_enum!(WorkPacketState {
 pub enum WorkPacketTransition {
     DependenciesSatisfied,
     Claim,
+    LeaseExpiredOrReleased,
     Submit,
     AcceptSubmission,
     RejectSubmission,
@@ -610,6 +615,7 @@ pub enum WorkPacketTransition {
 string_enum!(WorkPacketTransition {
     DependenciesSatisfied => "dependencies_satisfied",
     Claim => "claim",
+    LeaseExpiredOrReleased => "lease_expired_or_released",
     Submit => "submit",
     AcceptSubmission => "accept_submission",
     RejectSubmission => "reject_submission",
@@ -624,6 +630,7 @@ impl WorkPacketState {
                 Ok(Self::Open)
             }
             (Self::Open, WorkPacketTransition::Claim) => Ok(Self::Claimed),
+            (Self::Claimed, WorkPacketTransition::LeaseExpiredOrReleased) => Ok(Self::Open),
             (Self::Claimed, WorkPacketTransition::Submit) => Ok(Self::Submitted),
             (Self::Submitted, WorkPacketTransition::AcceptSubmission) => Ok(Self::Accepted),
             (Self::Submitted, WorkPacketTransition::RejectSubmission) => Ok(Self::Rejected),

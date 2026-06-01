@@ -84,6 +84,7 @@ pub enum ValidationCheckName {
     AiAssistanceDisclosure,
     ManifestLineage,
     ContentsMatchFiles,
+    ArtifactDigestIntegrity,
     MarkdownSafety,
     ObviousPiiHeuristic,
     ObviousInappropriateContentHeuristic,
@@ -107,6 +108,7 @@ impl ValidationCheckName {
             Self::AiAssistanceDisclosure => "ai_assistance_disclosure",
             Self::ManifestLineage => "manifest_lineage",
             Self::ContentsMatchFiles => "contents_match_files",
+            Self::ArtifactDigestIntegrity => "artifact_digest_integrity",
             Self::MarkdownSafety => "markdown_safety",
             Self::ObviousPiiHeuristic => "obvious_pii_heuristic",
             Self::ObviousInappropriateContentHeuristic => "obvious_inappropriate_content_heuristic",
@@ -119,7 +121,7 @@ impl ValidationCheckName {
     }
 }
 
-const CHECK_ORDER: [ValidationCheckName; 18] = [
+const CHECK_ORDER: [ValidationCheckName; 19] = [
     ValidationCheckName::BundleShape,
     ValidationCheckName::PathNormalization,
     ValidationCheckName::ManifestSchema,
@@ -130,6 +132,7 @@ const CHECK_ORDER: [ValidationCheckName; 18] = [
     ValidationCheckName::AiAssistanceDisclosure,
     ValidationCheckName::ManifestLineage,
     ValidationCheckName::ContentsMatchFiles,
+    ValidationCheckName::ArtifactDigestIntegrity,
     ValidationCheckName::MarkdownSafety,
     ValidationCheckName::ObviousPiiHeuristic,
     ValidationCheckName::ObviousInappropriateContentHeuristic,
@@ -273,7 +276,7 @@ pub fn validate_bundle(
         Ok(digests) => digests,
         Err(_) => {
             builder.fail(
-                ValidationCheckName::PublicProvenanceAllowlist,
+                ValidationCheckName::ArtifactDigestIntegrity,
                 "artifact_digest_mismatch",
             );
             ArtifactDigestSet {
@@ -289,7 +292,7 @@ pub fn validate_bundle(
             || submitted.bundle_digest != authoritative_digests.bundle_digest)
     {
         builder.fail(
-            ValidationCheckName::PublicProvenanceAllowlist,
+            ValidationCheckName::ArtifactDigestIntegrity,
             "artifact_digest_mismatch",
         );
     }
@@ -1558,6 +1561,7 @@ fn safe_location_for_check(check: ValidationCheckName) -> &'static str {
         | ValidationCheckName::LicenseMetadata
         | ValidationCheckName::AiAssistanceDisclosure
         | ValidationCheckName::ManifestLineage
+        | ValidationCheckName::ArtifactDigestIntegrity
         | ValidationCheckName::ContentsMatchFiles
         | ValidationCheckName::PublicProvenanceAllowlist => "manifest.json",
         ValidationCheckName::MarkdownSafety

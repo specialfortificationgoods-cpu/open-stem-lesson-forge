@@ -439,10 +439,10 @@ pub fn promote_verified_proposal(
     context: PromotionContext,
     ids: PromotionIds,
     command_id: &str,
-    _request_fingerprint: &str,
+    request_fingerprint: &str,
     ledger: &mut PromotionLedger,
 ) -> Result<PromotionDecisionRecord, GraphPolicyError> {
-    let request_fingerprint = promotion_fingerprint(proposal, &context, &ids);
+    let request_fingerprint = promotion_fingerprint(proposal, &context, request_fingerprint);
     validate_promotion_preconditions(proposal, &context, &ids)?;
 
     if let Some(existing) = ledger.decisions_by_command.get(command_id) {
@@ -578,10 +578,11 @@ fn sha256_hex(bytes: &[u8]) -> String {
 fn promotion_fingerprint(
     proposal: &ProposedTaskGraphRecord,
     context: &PromotionContext,
-    ids: &PromotionIds,
+    request_fingerprint: &str,
 ) -> String {
     format!(
-        "{}|{}|{}|{}|{}|{}|{}|{}|{:?}|{}|{:?}|{:?}",
+        "{}|{}|{}|{}|{}|{}|{}|{}|{}|{:?}|{}",
+        request_fingerprint,
         proposal.proposal_id,
         proposal.state.as_str(),
         proposal
@@ -594,9 +595,7 @@ fn promotion_fingerprint(
         context.request_available_for_promotion,
         context.active_competing_planning_leases,
         context.verification,
-        context.open_blocking_findings,
-        ids.promotion_decision_id,
-        ids.work_packet_ids
+        context.open_blocking_findings
     )
 }
 

@@ -205,7 +205,7 @@ pub fn validate_mvp_request(value: &Value) -> Result<(), SchemaError> {
         "invalid_duration",
         "/lesson_duration_minutes",
     )?;
-    require_exact_set(
+    require_allowed_subset(
         SchemaName::MvpRequest,
         &request.desired_artifacts,
         DESIRED_ARTIFACTS,
@@ -220,7 +220,7 @@ pub fn validate_mvp_request(value: &Value) -> Result<(), SchemaError> {
     )?;
     require_eq(
         SchemaName::MvpRequest,
-        request.visibility == "public",
+        matches!(request.visibility.as_str(), "public" | "private"),
         "invalid_visibility",
         "/visibility",
     )?;
@@ -1547,6 +1547,25 @@ fn require_exact_set(
     require_eq(
         schema,
         actual.len() == expected.len() && actual_set == expected_set,
+        code,
+        field_path,
+    )
+}
+
+fn require_allowed_subset(
+    schema: SchemaName,
+    actual: &[String],
+    allowed: &[&str],
+    code: &'static str,
+    field_path: &'static str,
+) -> Result<(), SchemaError> {
+    let allowed_set: BTreeSet<&str> = allowed.iter().copied().collect();
+    let actual_set: BTreeSet<&str> = actual.iter().map(String::as_str).collect();
+    require_eq(
+        schema,
+        !actual.is_empty()
+            && actual.len() == actual_set.len()
+            && actual_set.iter().all(|item| allowed_set.contains(item)),
         code,
         field_path,
     )

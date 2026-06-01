@@ -315,7 +315,7 @@ Response `201`:
     "topic": "conservation_of_energy",
     "age_range": "14-16",
     "language": "en",
-    "desired_artifacts": ["answer_key", "python_checker", "teacher_notes", "worksheet"],
+    "desired_artifacts": ["worksheet", "answer_key", "python_checker", "teacher_notes"],
     "visibility": "public",
     "auto_repair_preference": "no_automated_repair"
   },

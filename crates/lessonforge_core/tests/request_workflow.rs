@@ -54,6 +54,20 @@ fn desired_artifacts_persist_in_canonical_order() -> Result<(), Box<dyn Error>> 
 }
 
 #[test]
+fn desired_artifacts_accept_subset_in_canonical_order() -> Result<(), Box<dyn Error>> {
+    let mut payload = valid_request_payload();
+    payload["desired_artifacts"] = json!(["teacher_notes", "worksheet"]);
+
+    let outcome = accept_request_intake(payload, intake_context()?)?;
+
+    assert_eq!(
+        outcome.request.desired_artifacts,
+        vec!["worksheet", "teacher_notes"]
+    );
+    Ok(())
+}
+
+#[test]
 fn accepted_moderation_report_creates_mechanical_planning_task() -> Result<(), Box<dyn Error>> {
     let intake = accept_request_intake(valid_request_payload(), intake_context()?)?;
     let context = moderation_context(&intake.request.request_id, &intake.moderation_task.task_id)?;
@@ -153,12 +167,9 @@ fn unsupported_mvp_values_and_limits_reject_before_persistence() -> Result<(), B
         ("visibility", json!(null)),
         ("visibility", json!(123)),
         ("visibility", json!({})),
+        ("desired_artifacts", json!([])),
         ("desired_artifacts", json!(["worksheet", "simulation"])),
         ("desired_artifacts", json!(["worksheet", "worksheet"])),
-        (
-            "desired_artifacts",
-            json!(["worksheet", "answer_key", "python_checker"]),
-        ),
         ("constraints", json!(vec!["ok"; 13])),
         ("constraints", json!(["x".repeat(241)])),
     ] {
@@ -266,6 +277,17 @@ fn pii_secret_url_and_attachment_inputs_reject_without_persisting_raw_values()
     for (field, value) in [
         ("constraints", json!(["email teacher@example.com"])),
         ("constraints", json!(["local path /Users/alice/secrets"])),
+        ("constraints", json!(["local path /etc/passwd"])),
+        ("constraints", json!(["local path /private/tmp/token"])),
+        ("constraints", json!(["local path ../secrets"])),
+        (
+            "constraints",
+            json!(["local path C:\\Users\\alice\\auth.json"]),
+        ),
+        (
+            "constraints",
+            json!(["local path \\\\server\\share\\auth.json"]),
+        ),
         ("constraints", json!(["api key sk-proj-example"])),
         ("constraints", json!(["temporary sk-proj-example"])),
         ("constraints", json!(["temporary sk_test_1234"])),
@@ -360,6 +382,9 @@ fn ordinary_stem_numeric_text_is_not_phone_like_pii() -> Result<(), Box<dyn Erro
         "Use cell phone 978-0-13-110362-7 as an ISBN example",
         "Use cell phone 400 638 1333931 as an EAN example",
         "Compute 1+23456789 using mental math",
+        "Use 5551234567 as a synthetic numeric example",
+        "Use 15551234567 as a synthetic numeric example",
+        "Use 5551234567extra as a synthetic label",
         "Ask-students to compare proportional relationships",
         "Use a task-based warmup about kinetic energy",
     ] {
@@ -395,7 +420,7 @@ fn unknown_request_field_rejection_does_not_echo_raw_field_name() -> Result<(), 
 
 #[test]
 fn moderation_report_rejects_duplicate_category_flags() -> Result<(), Box<dyn Error>> {
-    let report = ModerationReportSubmission {
+    let mut report = ModerationReportSubmission {
         request_moderation_report_id: RequestModerationReportId::try_from("rmreport_energy_001")?,
         request_moderation_task_id: RequestModerationTaskId::try_from("rmtask_energy_001")?,
         request_id: RequestId::try_from("req_energy_001")?,
@@ -407,6 +432,17 @@ fn moderation_report_rejects_duplicate_category_flags() -> Result<(), Box<dyn Er
         safe_reason_codes: vec![ModerationSafeReason::ModerationRejectedPrivacy],
     };
 
+    assert!(!report.is_consistent());
+    report.category_flags = vec![ModerationCategory::Privacy];
+    report.safe_reason_codes = vec![
+        ModerationSafeReason::ModerationRejectedPrivacy,
+        ModerationSafeReason::ModerationRejectedPrivacy,
+    ];
+    assert!(!report.is_consistent());
+    report.safe_reason_codes = vec![
+        ModerationSafeReason::ModerationRejectedPrivacy,
+        ModerationSafeReason::ModerationRejectedViolence,
+    ];
     assert!(!report.is_consistent());
     Ok(())
 }
@@ -436,17 +472,6 @@ fn intake_rejections_include_safe_field_paths() -> Result<(), Box<dyn Error>> {
     assert_eq!(field_path, "/desired_artifacts/1");
 
     let mut payload = valid_request_payload();
-    payload["desired_artifacts"] = json!(["worksheet", "answer_key", "python_checker"]);
-    let Err(lessonforge_core::request::RequestWorkflowError::Rejected {
-        reason: IntakeRejectionReason::InvalidField,
-        field_path,
-    }) = accept_request_intake(payload, intake_context()?)
-    else {
-        return Err("missing artifact should reject with collection field path".into());
-    };
-    assert_eq!(field_path, "/desired_artifacts");
-
-    let mut payload = valid_request_payload();
     payload["constraints"] = json!(["x".repeat(241)]);
     let Err(lessonforge_core::request::RequestWorkflowError::Rejected {
         reason: IntakeRejectionReason::InvalidField,
@@ -456,6 +481,20 @@ fn intake_rejections_include_safe_field_paths() -> Result<(), Box<dyn Error>> {
         return Err("invalid constraint should reject with item field path".into());
     };
     assert_eq!(field_path, "/constraints/0");
+
+    let mut payload = valid_request_payload();
+    payload
+        .as_object_mut()
+        .ok_or("payload must be an object")?
+        .remove("visibility");
+    let Err(lessonforge_core::request::RequestWorkflowError::Rejected {
+        reason: IntakeRejectionReason::MissingRequiredField,
+        field_path,
+    }) = accept_request_intake(payload, intake_context()?)
+    else {
+        return Err("missing visibility should reject with field path".into());
+    };
+    assert_eq!(field_path, "/visibility");
 
     let mut payload = valid_request_payload();
     payload["attachments"] = json!(["rubric.pdf"]);

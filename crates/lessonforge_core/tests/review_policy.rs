@@ -519,10 +519,7 @@ fn finding_policy_rejects_invalid_severity_unsafe_text_and_laundered_blocking_fl
         "student roster: Bob Chen",
         "student@example.test",
         "Parent phone 555-123-4567",
-        "5551234567",
-        "2125550199",
         "5551234567x123",
-        "15551234567",
         "call me at 555/123/4567",
         "555/123/4567 phone",
         "phone is 555-1234",
@@ -593,6 +590,10 @@ fn finding_policy_rejects_invalid_severity_unsafe_text_and_laundered_blocking_fl
         "Compare 1/2 and 3/4 fractions",
         "Use grade 9 examples for introductory physics",
         "Students should compare energy transfers",
+        "Use 5551234567 as an opaque example number",
+        "Use 15551234567 as an opaque example number",
+        "Use 2125550199 as an opaque example number",
+        "Use 5551234567extra as a synthetic label",
     ] {
         let mut safe_numeric_text = ReviewSubmission::approved_no_findings();
         safe_numeric_text.findings = vec![FindingInput {

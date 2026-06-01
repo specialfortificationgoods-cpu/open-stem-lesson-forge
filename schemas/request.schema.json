@@ -34,7 +34,7 @@
       "items": { "type": "string", "maxLength": 240 }
     },
     "license_preference": { "const": "CC-BY-4.0" },
-    "visibility": { "const": "public" },
+    "visibility": { "enum": ["public", "private"] },
     "forbidden_content_acknowledged": { "const": true },
     "auto_repair_preference": {
       "enum": ["no_automated_repair", "request_bounded_code_repair"]

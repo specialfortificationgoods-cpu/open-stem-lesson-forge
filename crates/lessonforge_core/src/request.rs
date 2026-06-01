@@ -427,7 +427,7 @@ fn required_desired_artifacts(
     object: &serde_json::Map<String, Value>,
 ) -> Result<Vec<String>, RequestWorkflowError> {
     let values = required_string_array(object, "desired_artifacts")?;
-    if values.len() > 8 {
+    if values.is_empty() || values.len() > 8 {
         return Err(RequestWorkflowError::Rejected {
             reason: IntakeRejectionReason::InvalidField,
             field_path: "/desired_artifacts".to_owned(),
@@ -452,14 +452,10 @@ fn required_desired_artifacts(
         "python_checker".to_owned(),
         "teacher_notes".to_owned(),
     ];
-    let expected = canonical.iter().cloned().collect::<BTreeSet<_>>();
-    if seen != expected {
-        return Err(RequestWorkflowError::Rejected {
-            reason: IntakeRejectionReason::InvalidField,
-            field_path: "/desired_artifacts".to_owned(),
-        });
-    }
-    Ok(canonical)
+    Ok(canonical
+        .into_iter()
+        .filter(|artifact| seen.contains(artifact))
+        .collect())
 }
 
 fn optional_constraints(
@@ -551,10 +547,13 @@ fn require_true(
 
 fn optional_visibility(
     object: &serde_json::Map<String, Value>,
-    default: StoredRequestVisibility,
+    _default: StoredRequestVisibility,
 ) -> Result<StoredRequestVisibility, RequestWorkflowError> {
     match object.get("visibility") {
-        None => Ok(default),
+        None => Err(RequestWorkflowError::Rejected {
+            reason: IntakeRejectionReason::MissingRequiredField,
+            field_path: "/visibility".to_owned(),
+        }),
         Some(Value::String(value)) if value == "public" => Ok(StoredRequestVisibility::Public),
         Some(Value::String(value)) if value == "private" => Ok(StoredRequestVisibility::Private),
         Some(_) => Err(RequestWorkflowError::Rejected {
@@ -596,7 +595,16 @@ fn reject_unsafe_text(value: &str, field_path: &str) -> Result<(), RequestWorkfl
     let looks_like_local_path = lowercase.contains("/users/")
         || lowercase.contains("\\users\\")
         || lowercase.contains("/home/")
-        || lowercase.contains("\\home\\");
+        || lowercase.contains("\\home\\")
+        || lowercase.contains("/etc/")
+        || lowercase.contains("/private/")
+        || lowercase.contains("/var/")
+        || lowercase.contains("/tmp/")
+        || lowercase.contains("~/")
+        || lowercase.contains("../")
+        || lowercase.contains("..\\")
+        || contains_windows_absolute_path(&lowercase)
+        || lowercase.contains("\\\\");
     let looks_like_secret = contains_secret_key_prefix(&lowercase)
         || lowercase.contains("api key")
         || lowercase.contains("api_key")
@@ -626,6 +634,13 @@ fn contains_secret_key_prefix(lowercase: &str) -> bool {
     ["sk-", "sk_"]
         .iter()
         .any(|prefix| contains_delimited_secret_key_prefix(lowercase, prefix))
+}
+
+fn contains_windows_absolute_path(lowercase: &str) -> bool {
+    let bytes = lowercase.as_bytes();
+    bytes
+        .windows(3)
+        .any(|window| window[0].is_ascii_alphabetic() && window[1] == b':' && window[2] == b'\\')
 }
 
 fn contains_delimited_secret_key_prefix(lowercase: &str, prefix: &str) -> bool {

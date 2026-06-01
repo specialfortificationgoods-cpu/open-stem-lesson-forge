@@ -428,8 +428,8 @@ Write and review specs in this order:
 3. `003-architecture-stack-no-inference-boundary.md`
 4. `004-data-classification-redaction-logging-no-leak.md`
 5. `005-core-data-model-state-machine.md`
-6. `006-request-intake-planning-task-workflow.md`
-7. `007-proposed-task-graph-validation-promotion-reconciliation.md`
+6. `006-request-intake-to-planning-task-workflow.md`
+7. `007-proposed-task-graph-schema-policy-promotion-reconciliation.md`
 8. `008-central-api-contract.md`
 9. `009-runner-contract-capability-summary-local-config.md`
 10. `010-artifact-manifest-validation-provenance.md`

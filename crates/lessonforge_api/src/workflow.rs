@@ -1,3 +1,4 @@
+use hmac::{Hmac, Mac};
 use lessonforge_core::ids::{
     ActorId, LeaseId, PlanningTaskId, RequestId, RequestModerationTaskId, ReviewTaskId,
 };
@@ -119,6 +120,11 @@ impl DeterministicWorkflow {
                 reason: "moderation_task_mismatch",
             });
         }
+        if self.moderation_outcome.is_some() {
+            return Err(RequestWorkflowError::ModerationRejected {
+                reason: "moderation_task_already_submitted",
+            });
+        }
         if self
             .moderation_claim
             .as_ref()
@@ -210,6 +216,9 @@ impl DeterministicWorkflow {
             payload_digest,
             outcome: outcome.clone(),
         });
+        if let Some(claim) = &mut self.moderation_claim {
+            claim.active = false;
+        }
         Ok(outcome)
     }
 
@@ -675,13 +684,20 @@ fn derive_review_claim_token(
     expires_at: u64,
     review_claim_secret: &str,
 ) -> String {
-    digest_hex(format!(
-        "lessonforge-review-claim-token-v3\0{}\0{}\0{}\0{}",
-        review_claim_secret,
-        lease_id.as_str(),
-        claim_idempotency_key,
-        expires_at
-    ))
+    let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(review_claim_secret.as_bytes()) else {
+        return String::new();
+    };
+    mac.update(
+        format!(
+            "lessonforge-review-claim-token-v3\0{}\0{}\0{}",
+            lease_id.as_str(),
+            claim_idempotency_key,
+            expires_at
+        )
+        .as_bytes(),
+    );
+    let bytes = mac.finalize().into_bytes();
+    hex_lower(&bytes)
 }
 
 fn review_claim_token_matches(
@@ -715,6 +731,15 @@ fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
         diff |= usize::from(left_byte ^ right_byte);
     }
     diff == 0
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write as _;
+        let _ = write!(output, "{byte:02x}");
+    }
+    output
 }
 
 fn validate_idempotency_key(value: &str) -> Result<(), ReviewPolicyError> {

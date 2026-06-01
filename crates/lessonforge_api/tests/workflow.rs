@@ -77,6 +77,16 @@ fn api_workflow_composes_intake_and_moderation_deterministically() -> Result<(),
     );
     assert_eq!(planning_task.state, PlanningTaskState::Open);
     assert_eq!(workflow.planning_task_count(), 1);
+    assert!(
+        workflow
+            .claim_request_moderation_task(
+                intake.moderation_task.task_id.clone(),
+                LeaseId::try_from("lease_rmoderation_energy_003")?,
+                ActorId::try_from("actor_moderator_003")?,
+                "post-submit-token",
+            )
+            .is_err()
+    );
 
     let replay = workflow.submit_moderation_report(report)?;
     assert_eq!(replay.request_state, RequestState::PlanningOpen);

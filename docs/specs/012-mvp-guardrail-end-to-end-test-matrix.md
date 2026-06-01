@@ -16,7 +16,6 @@ Depends on:
 - `docs/specs/010-artifact-manifest-validation-provenance.md`
 - `docs/specs/011-critique-human-review-publication-promotion.md`
 - `docs/specs/013-task-scoped-code-execution-sandbox-provenance.md`
-- `docs/specs/014-secure-code-review-critique-repair.md`
 
 ## Purpose
 
@@ -644,6 +643,8 @@ Expected:
 ## Code Critique and Repair Gates
 
 ### CR-GATE-001: Critique is advisory only
+
+CR-GATE rows are activated only after spec `014` has passed. Spec `012` names the matrix slots without making the whole MVP guardrail matrix depend on spec `014`.
 
 Submit signed code critique with no findings, blocking findings, approval-like text, and recommended next state.
 

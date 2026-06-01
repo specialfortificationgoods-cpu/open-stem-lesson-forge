@@ -101,8 +101,16 @@ impl ModerationReportSubmission {
                 !contains_none
                     && !self.category_flags.is_empty()
                     && categories_are_unique(&self.category_flags)
+                    && reasons_are_unique(&self.safe_reason_codes)
                     && self.category_flags.iter().all(|category| {
                         matching_reason_present(*category, self.decision, &self.safe_reason_codes)
+                    })
+                    && self.safe_reason_codes.iter().all(|reason| {
+                        reason_matches_flagged_category(
+                            *reason,
+                            self.decision,
+                            &self.category_flags,
+                        )
                     })
             }
         }
@@ -116,6 +124,17 @@ fn categories_are_unique(categories: &[ModerationCategory]) -> bool {
             return false;
         }
         seen.push(*category);
+    }
+    true
+}
+
+fn reasons_are_unique(reasons: &[ModerationSafeReason]) -> bool {
+    let mut seen = Vec::with_capacity(reasons.len());
+    for reason in reasons {
+        if seen.contains(reason) {
+            return false;
+        }
+        seen.push(*reason);
     }
     true
 }
@@ -147,4 +166,19 @@ fn matching_reason_present(
         }
     };
     reasons.contains(&expected)
+}
+
+fn reason_matches_flagged_category(
+    reason: ModerationSafeReason,
+    decision: ModerationDecision,
+    categories: &[ModerationCategory],
+) -> bool {
+    if decision == ModerationDecision::QuarantineRequest
+        && reason == ModerationSafeReason::ModerationQuarantineReviewNeeded
+    {
+        return true;
+    }
+    categories
+        .iter()
+        .any(|category| matching_reason_present(*category, decision, &[reason]))
 }
