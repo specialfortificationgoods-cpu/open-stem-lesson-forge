@@ -1485,10 +1485,62 @@ fn validate_pin_path(path: &str) -> Result<(), RunnerConfigError> {
     }
     let metadata =
         fs::symlink_metadata(path).map_err(|_| RunnerConfigError::UnsafeCentralApiOrigin)?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() || fs::File::open(path).is_err() {
+    if !metadata.file_type().is_file() {
+        return Err(RunnerConfigError::UnsafeCentralApiOrigin);
+    }
+    let file = open_pin_file_without_following_symlinks(path)?;
+    let opened_metadata = file
+        .metadata()
+        .map_err(|_| RunnerConfigError::UnsafeCentralApiOrigin)?;
+    if !opened_metadata.file_type().is_file() {
         return Err(RunnerConfigError::UnsafeCentralApiOrigin);
     }
     Ok(())
+}
+
+fn open_pin_file_without_following_symlinks(path: &Path) -> Result<fs::File, RunnerConfigError> {
+    #[cfg(any(
+        target_os = "macos",
+        target_os = "linux",
+        target_os = "ios",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
+    {
+        let mut options = OpenOptions::new();
+        options.read(true);
+        options.custom_flags(libc::O_NOFOLLOW);
+        options
+            .open(path)
+            .map_err(|_| RunnerConfigError::UnsafeCentralApiOrigin)
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::fs::OpenOptionsExt as _;
+
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+            .open(path)
+            .map_err(|_| RunnerConfigError::UnsafeCentralApiOrigin)
+    }
+
+    #[cfg(not(any(
+        target_os = "macos",
+        target_os = "linux",
+        target_os = "ios",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd",
+        target_os = "windows"
+    )))]
+    {
+        let _ = path;
+        Err(RunnerConfigError::UnsafeCentralApiOrigin)
+    }
 }
 
 fn validate_spki_pin(value: &str) -> Result<(), RunnerConfigError> {
