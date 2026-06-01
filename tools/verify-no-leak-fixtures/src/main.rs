@@ -252,8 +252,13 @@ fn unsafe_reasons(text: &str) -> Vec<&'static str> {
 }
 
 fn has_windows_drive_path(lower: &str) -> bool {
-    lower.as_bytes().windows(3).any(|window| {
-        window[0].is_ascii_alphabetic() && window[1] == b':' && matches!(window[2], b'\\' | b'/')
+    let bytes = lower.as_bytes();
+    bytes.windows(3).enumerate().any(|(index, window)| {
+        let at_token_boundary = index == 0 || !bytes[index - 1].is_ascii_alphanumeric();
+        at_token_boundary
+            && window[0].is_ascii_alphabetic()
+            && window[1] == b':'
+            && matches!(window[2], b'\\' | b'/')
     })
 }
 
@@ -1071,6 +1076,19 @@ mod tests {
             assert!(
                 unsafe_reasons(text).contains(&"local_path_value"),
                 "{text} should fail as a local path"
+            );
+        }
+    }
+
+    #[test]
+    fn url_schemes_are_not_misread_as_windows_drive_paths() {
+        for text in [
+            "See https://example.test/lesson",
+            "See http://example.test/lesson",
+        ] {
+            assert!(
+                !has_windows_drive_path(&text.to_ascii_lowercase()),
+                "{text} should not match the Windows drive detector"
             );
         }
     }

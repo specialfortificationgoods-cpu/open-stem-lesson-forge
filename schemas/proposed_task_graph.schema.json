@@ -141,7 +141,8 @@
               "required_capabilities",
               "outputs",
               "validation_required",
-              "human_review_required_for"
+              "human_review_required_for",
+              "execution_policy"
             ],
             "properties": {
               "local_id": {

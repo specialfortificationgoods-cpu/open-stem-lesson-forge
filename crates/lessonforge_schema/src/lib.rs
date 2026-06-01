@@ -1419,7 +1419,7 @@ fn valid_age_range(text: &str) -> bool {
     let Ok(end) = end.parse::<u8>() else {
         return false;
     };
-    start <= end && start > 0 && end <= 19
+    start < end && start > 0 && end <= 19
 }
 
 fn valid_ascii_slug(text: &str) -> bool {
@@ -1554,10 +1554,7 @@ fn validate_proposed_tasks(tasks: &[ProposedTask]) -> Result<(), SchemaError> {
     )?;
     require_eq(
         SchemaName::ProposedTaskGraph,
-        generation
-            .execution_policy
-            .as_deref()
-            .is_none_or(|policy| policy == "code_generation_only")
+        generation.execution_policy.as_deref() == Some("code_generation_only")
             && validation.execution_policy.is_none()
             && review.execution_policy.is_none(),
         "invalid_execution_policy",

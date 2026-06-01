@@ -1262,16 +1262,31 @@ fn open_key_file_without_following_symlinks(path: &Path) -> Result<fs::File, std
         .open(path)
 }
 
+#[cfg(target_os = "windows")]
+fn open_key_file_without_following_symlinks(path: &Path) -> Result<fs::File, std::io::Error> {
+    use std::os::windows::fs::OpenOptionsExt as _;
+
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+}
+
 #[cfg(not(any(
     target_os = "macos",
     target_os = "linux",
     target_os = "ios",
     target_os = "freebsd",
     target_os = "netbsd",
-    target_os = "openbsd"
+    target_os = "openbsd",
+    target_os = "windows"
 )))]
-fn open_key_file_without_following_symlinks(path: &Path) -> Result<fs::File, std::io::Error> {
-    fs::File::open(path)
+fn open_key_file_without_following_symlinks(_path: &Path) -> Result<fs::File, std::io::Error> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "secure key file open is unsupported on this target",
+    ))
 }
 
 fn parse_ed25519_seed(bytes: &[u8]) -> Option<[u8; 32]> {

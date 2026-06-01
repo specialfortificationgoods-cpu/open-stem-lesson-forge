@@ -848,6 +848,9 @@ import resource
 import signal
 import sys
 
+# The Rust launcher applies CPU and file-descriptor limits before Python starts.
+# These in-process limits are defense-in-depth; the checker import briefly needs
+# up to 16 descriptors, then the harness lowers the limit to 3.
 resource.setrlimit(resource.RLIMIT_CPU, (1, 1))
 signal.alarm(2)
 resource.setrlimit(resource.RLIMIT_NOFILE, (16, 16))
@@ -869,7 +872,8 @@ if not all(checks):
     let Some(python3) = validate_python3_interpreter(python_interpreter_path) else {
         return false;
     };
-    let Ok(output) = Command::new(python3)
+    let mut command = limited_python_command(&python3);
+    let Ok(output) = command
         .arg("-I")
         .arg("-B")
         .arg("-c")
@@ -968,6 +972,8 @@ import resource
 import signal
 import sys
 
+# The Rust launcher applies CPU and file-descriptor limits before Python starts.
+# These Python-side limits and alarm are defense-in-depth for this AST-only helper.
 resource.setrlimit(resource.RLIMIT_CPU, (1, 1))
 signal.alarm(2)
 resource.setrlimit(resource.RLIMIT_NOFILE, (16, 16))
@@ -1109,7 +1115,8 @@ if not required.issubset(found):
     safe = False
 print(("1" if safe else "0") + " " + ("1" if no_external_network else "0"))
 "#;
-    let mut child = Command::new(python3)
+    let mut command = limited_python_command(&python3);
+    let mut child = command
         .arg("-I")
         .arg("-B")
         .arg("-c")
@@ -1152,6 +1159,16 @@ fn wait_for_child_output_with_timeout(mut child: Child, timeout: Duration) -> Op
         }
         std::thread::sleep(Duration::from_millis(10));
     }
+}
+
+fn limited_python_command(python3: &Path) -> Command {
+    let mut command = Command::new("/bin/sh");
+    command
+        .arg("-c")
+        .arg("ulimit -t 1; ulimit -n 16; exec \"$@\"")
+        .arg("lessonforge-python-limited")
+        .arg(python3);
+    command
 }
 
 fn heuristic_checker_static_safety(source: &str) -> CheckerStaticSafety {

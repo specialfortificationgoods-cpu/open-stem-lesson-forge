@@ -67,6 +67,16 @@ fn request_fixture_rejects_unknown_and_raw_unsafe_values_safely() -> Result<(), 
     non_fixture_request["lesson_duration_minutes"] = json!(60);
     validate_mvp_request(&non_fixture_request)?;
 
+    for invalid_age_range in ["16-14", "14-14", "00-00"] {
+        let mut invalid_age_request = valid_request();
+        invalid_age_request["age_range"] = json!(invalid_age_range);
+        let age_error = match validate_mvp_request(&invalid_age_request) {
+            Ok(()) => return Err(format!("{invalid_age_range} should reject").into()),
+            Err(error) => error,
+        };
+        assert_eq!(age_error.code, "invalid_age_range");
+    }
+
     let mut bad_repair_request = valid_request();
     bad_repair_request["auto_repair_preference"] = json!("keep_fixing_until_it_works");
     let repair_error = match validate_mvp_request(&bad_repair_request) {
@@ -118,6 +128,21 @@ fn proposed_task_graph_fixture_rejects_lineage_and_policy_drift() -> Result<(), 
     graph_with_advisory_execution_policy["proposed_tasks"][0]["execution_policy"] =
         json!("code_generation_only");
     validate_proposed_task_graph(&graph_with_advisory_execution_policy)?;
+
+    let mut graph_without_generation_execution_policy = valid_graph();
+    graph_without_generation_execution_policy["proposed_tasks"][0]
+        .as_object_mut()
+        .ok_or("generation task should be an object")?
+        .remove("execution_policy");
+    let missing_generation_policy_error =
+        match validate_proposed_task_graph(&graph_without_generation_execution_policy) {
+            Ok(()) => return Err("generation task execution_policy should be required".into()),
+            Err(error) => error,
+        };
+    assert_eq!(
+        missing_generation_policy_error.code,
+        "invalid_execution_policy"
+    );
 
     let mut graph_with_validation_execution_policy = valid_graph();
     graph_with_validation_execution_policy["proposed_tasks"][1]["execution_policy"] =
@@ -935,6 +960,7 @@ fn valid_graph() -> Value {
                 "age_range": "14-16",
                 "language": "en",
                 "risk_level": "low",
+                "execution_policy": "code_generation_only",
                 "required_capabilities": ["stem_pedagogy", "structured_markdown", "basic_python"],
                 "outputs": ["worksheet.md", "answer_key.md", "checker.py", "teacher_notes.md", "manifest.json"],
                 "validation_required": [
