@@ -37,7 +37,7 @@ fn dummy_planner_config_validates_and_emits_redacted_summary() -> Result<(), Box
 
 #[test]
 fn unsafe_origins_and_provider_backed_modes_are_rejected_safely() {
-    for mut config in [
+    for config in [
         dummy_planner_config_with_base("https://"),
         dummy_planner_config_with_base("https://*.lessonforge.example"),
         dummy_planner_config_with_base("https://attacker.example"),
@@ -53,7 +53,6 @@ fn unsafe_origins_and_provider_backed_modes_are_rejected_safely() {
         let (code, rendered) = config_error_code_and_debug(&config);
         assert_eq!(code, "unsafe_central_api_origin");
         assert!(!rendered.contains("user:pass"));
-        config.runner.central_api_base = "https://127.0.0.1:8443".to_owned();
     }
 
     let mut provider = dummy_planner_config();

@@ -1,6 +1,7 @@
 use crate::error::{LeaseError, TransitionError};
 use crate::ids::{ActorId, LeaseId};
 use serde::{Deserialize, Serialize};
+use subtle::ConstantTimeEq;
 
 macro_rules! string_enum {
     ($name:ident { $($variant:ident => $value:literal),+ $(,)? }) => {
@@ -992,7 +993,13 @@ impl Lease {
     }
 
     fn require_token(&self, claim_token: &str) -> Result<(), LeaseError> {
-        if Self::claim_token_hash(claim_token) != self.claim_token_hash {
+        let submitted_hash = Self::claim_token_hash(claim_token);
+        if submitted_hash
+            .as_bytes()
+            .ct_eq(self.claim_token_hash.as_bytes())
+            .unwrap_u8()
+            != 1
+        {
             return Err(LeaseError::ClaimTokenMismatch);
         }
         Ok(())

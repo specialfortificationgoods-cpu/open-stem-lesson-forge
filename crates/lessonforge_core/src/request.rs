@@ -597,7 +597,7 @@ fn reject_unsafe_text(value: &str, field_path: &str) -> Result<(), RequestWorkfl
         || lowercase.contains("\\users\\")
         || lowercase.contains("/home/")
         || lowercase.contains("\\home\\");
-    let looks_like_secret = lowercase.contains("sk-")
+    let looks_like_secret = contains_secret_key_prefix(&lowercase)
         || lowercase.contains("api key")
         || lowercase.contains("api_key")
         || lowercase.contains("secret")
@@ -620,6 +620,38 @@ fn reject_unsafe_text(value: &str, field_path: &str) -> Result<(), RequestWorkfl
         });
     }
     Ok(())
+}
+
+fn contains_secret_key_prefix(lowercase: &str) -> bool {
+    ["sk-", "sk_"]
+        .iter()
+        .any(|prefix| contains_delimited_secret_key_prefix(lowercase, prefix))
+}
+
+fn contains_delimited_secret_key_prefix(lowercase: &str, prefix: &str) -> bool {
+    let mut search_start = 0;
+    while let Some(relative_start) = lowercase[search_start..].find(prefix) {
+        let start = search_start.saturating_add(relative_start);
+        let end = start.saturating_add(prefix.len());
+        let before_is_token = lowercase[..start]
+            .chars()
+            .next_back()
+            .is_some_and(|character| character.is_ascii_alphanumeric() || character == '_');
+        if !before_is_token && secret_key_tail_is_plausible(&lowercase[end..]) {
+            return true;
+        }
+        search_start = end;
+    }
+    false
+}
+
+fn secret_key_tail_is_plausible(tail: &str) -> bool {
+    tail.chars()
+        .take_while(|character| {
+            character.is_ascii_alphanumeric() || *character == '-' || *character == '_'
+        })
+        .count()
+        >= 4
 }
 
 fn has_long_digit_run(value: &str, minimum_run: usize) -> bool {

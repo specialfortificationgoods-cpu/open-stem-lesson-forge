@@ -267,6 +267,8 @@ fn pii_secret_url_and_attachment_inputs_reject_without_persisting_raw_values()
         ("constraints", json!(["email teacher@example.com"])),
         ("constraints", json!(["local path /Users/alice/secrets"])),
         ("constraints", json!(["api key sk-proj-example"])),
+        ("constraints", json!(["temporary sk-proj-example"])),
+        ("constraints", json!(["temporary sk_test_1234"])),
         ("constraints", json!(["provider endpoint is forbidden"])),
         ("constraints", json!(["call me at 5551234567"])),
         ("constraints", json!(["call me at 15551234567"])),
@@ -335,6 +337,7 @@ fn pii_secret_url_and_attachment_inputs_reject_without_persisting_raw_values()
         assert!(!rendered.contains("teacher@example.com"));
         assert!(!rendered.contains("/Users/alice"));
         assert!(!rendered.contains("sk-proj-example"));
+        assert!(!rendered.contains("sk_test_1234"));
         assert!(!rendered.contains("https://example.test"));
     }
     Ok(())
@@ -357,6 +360,8 @@ fn ordinary_stem_numeric_text_is_not_phone_like_pii() -> Result<(), Box<dyn Erro
         "Use cell phone 978-0-13-110362-7 as an ISBN example",
         "Use cell phone 400 638 1333931 as an EAN example",
         "Compute 1+23456789 using mental math",
+        "Ask-students to compare proportional relationships",
+        "Use a task-based warmup about kinetic energy",
     ] {
         let mut payload = valid_request_payload();
         payload["constraints"] = json!([text]);

@@ -292,7 +292,7 @@ impl DeterministicWorkflow {
             }
             self.review_claim_replays.remove(&replay_key);
         }
-        let Some(task) = &self.review_task else {
+        let Some(task) = self.review_task.clone() else {
             return Err(ReviewPolicyError::ReviewSourceStateNotEligible);
         };
         if task.review_task_id != review_task_id {
@@ -315,7 +315,7 @@ impl DeterministicWorkflow {
             trusted_validation_passed: gate.trusted_validation_passed,
             open_blocking_findings_elsewhere: gate.open_blocking_findings_elsewhere,
         };
-        validate_review_claim(task, &probe)?;
+        validate_review_claim(&task, &probe)?;
         let review_claim_secret = self.review_claim_secret()?;
         let expires_at = self.now.saturating_add(REVIEW_LEASE_TTL_SECONDS);
         let result = ReviewClaimResult {
@@ -347,6 +347,7 @@ impl DeterministicWorkflow {
                 lease_id,
                 reviewer,
                 source_lineage,
+                stored_at: self.now,
                 result: ReviewClaimResult {
                     claim_token_returned: false,
                     claim_token: None,
@@ -354,9 +355,10 @@ impl DeterministicWorkflow {
                 },
             },
         );
+        self.prune_review_claim_replays();
         self.review_task = Some(ReviewTaskRecord {
             state: ReviewTaskState::Claimed,
-            ..task.clone()
+            ..task
         });
         Ok(result)
     }
@@ -512,6 +514,17 @@ impl DeterministicWorkflow {
         let now = self.now;
         self.review_claim_replays
             .retain(|_, replay| now < replay.result.expires_at);
+        while self.review_claim_replays.len() > MAX_REVIEW_CLAIM_REPLAY_ENTRIES {
+            let Some(oldest_key) = self
+                .review_claim_replays
+                .iter()
+                .min_by_key(|(key, replay)| (replay.stored_at, replay.result.expires_at, *key))
+                .map(|(key, _)| key.clone())
+            else {
+                break;
+            };
+            self.review_claim_replays.remove(&oldest_key);
+        }
     }
 
     fn review_claim_replay_is_active(
@@ -534,6 +547,7 @@ impl DeterministicWorkflow {
 }
 
 const REVIEW_LEASE_TTL_SECONDS: u64 = 3600;
+const MAX_REVIEW_CLAIM_REPLAY_ENTRIES: usize = 16;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ReviewGateState {
@@ -634,6 +648,7 @@ struct StoredReviewClaim {
     lease_id: LeaseId,
     reviewer: ReviewerProfile,
     source_lineage: SourceActorLineage,
+    stored_at: u64,
     result: ReviewClaimResult,
 }
 
