@@ -1535,13 +1535,13 @@ fn validate_attestation_config(config: &RunnerConfig) -> Result<(), RunnerConfig
     validate_runner_key_id(&config.attestation.runner_key_id)?;
     let key_path = Path::new(&config.attestation.ed25519_private_key_path);
     reject_unsafe_local_config_path(key_path)?;
-    let workspace_root = Path::new(&config.runner.workspace_root)
-        .canonicalize()
-        .map_err(|_| RunnerConfigError::InvalidAttestationConfig)?;
     let canonical_key_path = key_path
         .canonicalize()
         .map_err(|_| RunnerConfigError::InvalidAttestationConfig)?;
-    let key_in_workspace = canonical_key_path.starts_with(&workspace_root);
+    let workspace_root = Path::new(&config.runner.workspace_root).canonicalize().ok();
+    let key_in_workspace = workspace_root
+        .as_ref()
+        .is_some_and(|workspace_root| canonical_key_path.starts_with(workspace_root));
     let key_in_private_dir = validate_runner_private_key_dir(
         &config.attestation.runner_private_key_dir,
         &canonical_key_path,

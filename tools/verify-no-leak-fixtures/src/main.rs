@@ -220,8 +220,8 @@ fn unsafe_reasons(text: &str) -> Vec<&'static str> {
         || lower.contains("/var/")
         || lower.contains("~/")
         || lower.contains("\\users\\")
-        || lower.contains("c:\\")
-        || lower.contains("d:\\")
+        || has_windows_drive_path(&lower)
+        || lower.contains("\\\\")
         || lower.contains(".ssh")
         || lower.contains(".codex")
     {
@@ -249,6 +249,12 @@ fn unsafe_reasons(text: &str) -> Vec<&'static str> {
     reasons.sort_unstable();
     reasons.dedup();
     reasons
+}
+
+fn has_windows_drive_path(lower: &str) -> bool {
+    lower.as_bytes().windows(3).any(|window| {
+        window[0].is_ascii_alphabetic() && window[1] == b':' && matches!(window[2], b'\\' | b'/')
+    })
 }
 
 fn contains_secret_like_key(lower: &str) -> bool {
@@ -1037,6 +1043,20 @@ mod tests {
             assert!(
                 unsafe_reasons(text).contains(&"student_pii_like_value"),
                 "{text} should fail as student PII-like text"
+            );
+        }
+    }
+
+    #[test]
+    fn windows_drive_and_unc_paths_fail_as_local_paths() {
+        for text in [
+            "Read X:\\School\\student.txt",
+            "Read z:/school/student.txt",
+            "Read \\\\server\\share\\student.txt",
+        ] {
+            assert!(
+                unsafe_reasons(text).contains(&"local_path_value"),
+                "{text} should fail as a local path"
             );
         }
     }

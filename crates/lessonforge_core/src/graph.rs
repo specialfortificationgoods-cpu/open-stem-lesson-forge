@@ -444,7 +444,6 @@ pub fn promote_verified_proposal(
     ledger: &mut PromotionLedger,
 ) -> Result<PromotionDecisionRecord, GraphPolicyError> {
     let request_fingerprint = promotion_fingerprint(proposal, &context, request_fingerprint);
-    validate_promotion_preconditions(proposal, &context, &ids)?;
 
     if let Some(existing) = ledger.decisions_by_command.get(command_id) {
         if existing.request_fingerprint == request_fingerprint {
@@ -457,10 +456,24 @@ pub fn promote_verified_proposal(
     }
 
     if let Some(existing) = ledger.decisions_by_proposal.get(&proposal.proposal_id) {
+        let existing_replay = ledger
+            .decisions_by_command
+            .values()
+            .find(|record| record.decision.proposal.proposal_id == proposal.proposal_id);
+        let replay_matches =
+            existing_replay.is_some_and(|record| record.request_fingerprint == request_fingerprint);
+        if !replay_matches {
+            return Err(GraphPolicyError::new(
+                "idempotency_key_reused_with_changed_promotion",
+                "/promotion/command_id",
+            ));
+        }
         let mut no_op = existing.clone();
         no_op.state = PromotionDecisionState::AlreadyPromoted;
         return Ok(no_op);
     }
+
+    validate_promotion_preconditions(proposal, &context, &ids)?;
 
     let work_packets = materialize_work_packets(proposal, &ids)?;
     let new_source_keys: BTreeSet<(ProposedTaskGraphId, String)> = work_packets
@@ -581,15 +594,15 @@ fn promotion_fingerprint(
     context: &PromotionContext,
     request_fingerprint: &str,
 ) -> String {
+    let policy_fingerprint = proposal
+        .mvp_policy_fingerprint
+        .clone()
+        .unwrap_or_else(|| mvp_policy_fingerprint(&proposal.tasks));
     format!(
-        "{}|{}|{}|{}|{}|{}|{}|{}|{}|{:?}|{}",
+        "{}|{}|{}|{}|{}|{}|{}|{}|{:?}|{}",
         request_fingerprint,
         proposal.proposal_id,
-        proposal.state.as_str(),
-        proposal
-            .mvp_policy_fingerprint
-            .as_deref()
-            .unwrap_or("missing"),
+        policy_fingerprint,
         context.request_id,
         context.scope_id,
         context.planning_task_completed_for_proposal,
@@ -809,8 +822,8 @@ fn collect_policy_errors(
         errors,
     );
     validate_summary(&submitted.source_request_summary, context, errors);
-    validate_bounded_text_list(&submitted.assumptions, "/assumptions", errors);
-    validate_bounded_text_list(
+    validate_safe_bounded_text_list(&submitted.assumptions, "/assumptions", errors);
+    validate_safe_bounded_text_list(
         &submitted.missing_information,
         "/missing_information",
         errors,
@@ -889,6 +902,120 @@ fn validate_bounded_text_list(
             errors,
         );
     }
+}
+
+fn validate_safe_bounded_text_list(
+    values: &[String],
+    field_path: &'static str,
+    errors: &mut Vec<GraphPolicyError>,
+) {
+    validate_bounded_text_list(values, field_path, errors);
+    for value in values {
+        require(
+            safe_explanatory_text(value),
+            "unsafe_explanatory_text",
+            field_path,
+            errors,
+        );
+    }
+}
+
+fn safe_explanatory_text(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    !value.contains('@')
+        && !lower.contains("://")
+        && !lower.contains("file://")
+        && !lower.contains("/users/")
+        && !lower.contains("/home/")
+        && !lower.contains("/tmp/")
+        && !lower.contains("/etc/")
+        && !lower.contains("/private/")
+        && !lower.contains("/var/")
+        && !lower.contains("~/")
+        && !lower.contains("\\users\\")
+        && !has_windows_drive_path(&lower)
+        && !lower.contains("\\\\")
+        && !lower.contains("api_key")
+        && !lower.contains("api key")
+        && !lower.contains("api-key")
+        && !lower.contains("apikey")
+        && !lower.contains("token")
+        && !lower.contains("secret")
+        && !lower.contains("credential")
+        && !lower.contains("credentials")
+        && !lower.contains("cookie")
+        && !lower.contains("password")
+        && !lower.contains("oauth")
+        && !contains_secret_key_prefix(&lower)
+        && !contains_labeled_secret_marker(&lower, "bearer")
+        && !contains_token_sequence(&lower, &["access", "token"])
+        && !contains_token_sequence(&lower, &["refresh", "token"])
+        && !contains_token_sequence(&lower, &["client", "secret"])
+        && !lower.contains("prompt:")
+        && !lower.contains("ignore previous instructions")
+        && !lower.contains("student record")
+        && !lower.contains("student grade")
+}
+
+fn contains_secret_key_prefix(lower: &str) -> bool {
+    [
+        "sk-", "sk_", "sk_live", "sk_test", "sk_proj", "ghp_", "akia",
+    ]
+    .iter()
+    .any(|prefix| contains_delimited_secret_key_prefix(lower, prefix))
+}
+
+fn contains_delimited_secret_key_prefix(lower: &str, prefix: &str) -> bool {
+    let mut search_start = 0;
+    while let Some(relative_index) = lower[search_start..].find(prefix) {
+        let index = search_start + relative_index;
+        let before_ok = lower[..index]
+            .chars()
+            .next_back()
+            .is_none_or(|character| !character.is_ascii_alphanumeric() && character != '_');
+        if before_ok {
+            return true;
+        }
+        search_start = index + prefix.len();
+    }
+    false
+}
+
+fn contains_labeled_secret_marker(lower: &str, label: &str) -> bool {
+    let mut search_start = 0;
+    while let Some(relative_index) = lower[search_start..].find(label) {
+        let index = search_start + relative_index;
+        let before_ok = lower[..index]
+            .chars()
+            .next_back()
+            .is_none_or(|character| !character.is_ascii_alphanumeric());
+        let suffix = &lower[index + label.len()..];
+        let after_ok = suffix
+            .chars()
+            .next()
+            .is_some_and(|character| matches!(character, ':' | '=' | ' '));
+        if before_ok && after_ok {
+            return true;
+        }
+        search_start = index + label.len();
+    }
+    false
+}
+
+fn contains_token_sequence(lower: &str, sequence: &[&str]) -> bool {
+    let tokens = lower
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+    tokens
+        .windows(sequence.len())
+        .any(|window| window == sequence)
+}
+
+fn has_windows_drive_path(lower: &str) -> bool {
+    lower.as_bytes().windows(3).any(|window| {
+        window[0].is_ascii_alphabetic() && window[1] == b':' && matches!(window[2], b'\\' | b'/')
+    })
 }
 
 fn validate_artifacts(artifacts: &[ProposedArtifactInput], errors: &mut Vec<GraphPolicyError>) {

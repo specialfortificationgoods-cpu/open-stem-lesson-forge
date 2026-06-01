@@ -920,10 +920,8 @@ Purpose: conservative public label derived from central state.
 
 Labels:
 
-- `draft_generated`
 - `machine_validated`
 - `peer_reviewed`
-- `quarantined`
 - `deprecated`
 
 Rules:
@@ -931,6 +929,7 @@ Rules:
 - Public label is derived from artifact central state, validation report state, and review state.
 - Manifest claims cannot raise public label.
 - `classroom_ready` is not an MVP label.
+- `draft_generated`, `validation_failed`, and `quarantined` map to no public label in MVP.
 
 ## Lineage Rules
 

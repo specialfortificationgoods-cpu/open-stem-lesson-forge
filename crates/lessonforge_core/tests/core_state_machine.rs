@@ -439,8 +439,22 @@ fn lease_submission_consumes_once_and_replay_requires_same_key_and_payload()
             .to_owned(),
         result_id: "plan_energy".to_owned(),
     };
-    let consumed = lease.apply(LeaseAction::Submit(submission))?;
+    let consumed = lease.apply(LeaseAction::Submit(submission.clone()))?;
     assert_eq!(consumed.state(), LeaseState::Consumed);
+    let replayed_consumed = consumed
+        .clone()
+        .apply(LeaseAction::Submit(submission.clone()))?;
+    assert_eq!(replayed_consumed, consumed);
+
+    let mut changed_submission = submission.clone();
+    changed_submission.payload_digest =
+        "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_owned();
+    assert!(matches!(
+        consumed
+            .clone()
+            .apply(LeaseAction::Submit(changed_submission)),
+        Err(lessonforge_core::error::LeaseError::IdempotencyConflict)
+    ));
 
     assert_eq!(
         consumed.replay_submission(LeaseSubmissionReplay {

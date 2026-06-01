@@ -237,7 +237,7 @@ Spec `014` critique, repair, and interruption ingestion is post-MVP for the cent
 
 **Files:**
 - `crates/lessonforge_core/src/review.rs`
-- `crates/lessonforge_api/src/review.rs`
+- `crates/lessonforge_api/src/workflow.rs`
 
 Implement spec `011`:
 - review task state;

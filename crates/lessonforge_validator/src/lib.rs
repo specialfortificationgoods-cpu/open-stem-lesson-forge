@@ -1,8 +1,9 @@
 use std::collections::{BTreeSet, HashSet};
+use std::env;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[cfg(not(unix))]
@@ -492,7 +493,7 @@ impl ReportBuilder {
             .report
             .checks
             .iter()
-            .filter(|record| record.status != CheckStatus::Passed)
+            .filter(|record| record.status == CheckStatus::Failed)
             .cloned()
             .collect();
         self.report.status = if self
@@ -865,7 +866,10 @@ checks = [
 if not all(checks):
     raise SystemExit(1)
 "#;
-    let Ok(output) = Command::new("python3")
+    let Some(python3) = find_python3_interpreter() else {
+        return false;
+    };
+    let Ok(output) = Command::new(python3)
         .arg("-I")
         .arg("-B")
         .arg("-c")
@@ -877,6 +881,24 @@ if not all(checks):
         return false;
     };
     output.status.success() && output.stdout.is_empty() && output.stderr.is_empty()
+}
+
+fn find_python3_interpreter() -> Option<PathBuf> {
+    env::var_os("PATH")
+        .into_iter()
+        .flat_map(|path| env::split_paths(&path).collect::<Vec<_>>())
+        .map(|directory| directory.join("python3"))
+        .chain(
+            [
+                "/usr/bin/python3",
+                "/opt/homebrew/bin/python3",
+                "/usr/local/bin/python3",
+            ]
+            .into_iter()
+            .map(PathBuf::from),
+        )
+        .filter_map(|candidate| candidate.canonicalize().ok())
+        .find(|candidate| candidate.is_absolute() && candidate.is_file())
 }
 
 fn manifest_schema_values_are_valid(manifest: &ArtifactManifest) -> bool {

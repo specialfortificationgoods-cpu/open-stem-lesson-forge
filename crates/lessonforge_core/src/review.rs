@@ -433,7 +433,6 @@ fn validate_source_context(context: &ReviewClaimContext) -> Result<(), ReviewPol
         ArtifactState::MachineValidated | ArtifactState::ReviewRequested
     ) || !source_context_can_promote(context.request_state, context.proposal_state)
         || !context.trusted_validation_passed
-        || context.open_blocking_findings_elsewhere
     {
         return Err(ReviewPolicyError::ReviewSourceStateNotEligible);
     }

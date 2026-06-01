@@ -274,6 +274,13 @@ fn dummy_generator_requires_valid_attestation_config() -> Result<(), Box<dyn Err
     private_dir_key.attestation.runner_private_key_dir =
         private_key_dir.path().display().to_string();
     validate_runner_config(&private_dir_key)?;
+    let mut missing_workspace_private_dir_key = private_dir_key.clone();
+    missing_workspace_private_dir_key.runner.workspace_root = temp
+        .path()
+        .join("workspace-not-created")
+        .display()
+        .to_string();
+    validate_runner_config(&missing_workspace_private_dir_key)?;
 
     let other_private_key_dir = tempfile::tempdir()?;
     #[cfg(unix)]

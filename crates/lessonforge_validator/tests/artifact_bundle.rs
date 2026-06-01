@@ -15,7 +15,12 @@ fn valid_bundle_in_static_only_mode_is_explicitly_incomplete() -> Result<(), Box
     let report = validate_bundle(temp.path(), &context(CheckerExecutionMode::StaticOnly))?;
 
     assert_eq!(report.status, ValidationReportStatus::IncompleteStaticOnly);
-    assert_eq!(report.failures.len(), 1);
+    assert_eq!(report.failures.len(), 0);
+    assert!(
+        !report
+            .failure_codes()
+            .contains(&"checker_execution_not_performed")
+    );
     assert_eq!(
         report.check_status(ValidationCheckName::PythonCheckerRuns),
         Some(CheckStatus::SkippedStaticOnly)
@@ -615,10 +620,9 @@ fn checker_static_safety_rejects_dangerous_python_without_execution() -> Result<
                 .failure_codes()
                 .contains(&"python_checker_static_safety_failed")
         );
-        assert!(
-            report
-                .failure_codes()
-                .contains(&"python_checker_runs_skipped_static_only")
+        assert_eq!(
+            report.check_status(ValidationCheckName::PythonCheckerRuns),
+            Some(CheckStatus::SkippedStaticOnly)
         );
         assert!(report.rendered_safe_text().find(checker).is_none());
     }

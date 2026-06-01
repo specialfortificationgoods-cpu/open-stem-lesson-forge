@@ -4,9 +4,9 @@ use lessonforge_core::ids::{ActorId, ArtifactId, RequestId, ReviewId, ReviewTask
 use lessonforge_core::review::{
     ArtifactPublicationInput, ArtifactVisibility, FindingInput, FindingSeverity, FindingType,
     HumanReviewWorkPacketProof, PublicArtifactLabel, ReviewClaimContext, ReviewContext,
-    ReviewOutcome, ReviewPolicyError, ReviewSubmission, ReviewSubmissionResult, ReviewTaskRecord,
-    ReviewType, ReviewerProfile, SourceActorLineage, SourceOutputActor, create_review_task,
-    derive_public_label, submit_review as submit_review_policy,
+    ReviewOutcome, ReviewPolicyError, ReviewRecordState, ReviewSubmission, ReviewSubmissionResult,
+    ReviewTaskRecord, ReviewType, ReviewerProfile, SourceActorLineage, SourceOutputActor,
+    create_review_task, derive_public_label, submit_review as submit_review_policy,
 };
 use lessonforge_core::state::{
     ActorCapability, ActorStatus, ActorType, ArtifactState, ProposedTaskGraphState, RequestState,
@@ -895,10 +895,6 @@ fn review_submission_rejects_quarantined_or_superseded_parent_context() -> Resul
             trusted_validation_passed: false,
             ..review_claim_context(reviewer.clone())?
         },
-        ReviewClaimContext {
-            open_blocking_findings_elsewhere: true,
-            ..review_claim_context(reviewer.clone())?
-        },
     ] {
         let result = submit_review(
             create_review_task(review_context()?)?,
@@ -912,6 +908,32 @@ fn review_submission_rejects_quarantined_or_superseded_parent_context() -> Resul
             "review_source_state_not_eligible"
         );
     }
+    Ok(())
+}
+
+#[test]
+fn open_blocking_findings_elsewhere_allow_review_but_do_not_promote() -> Result<(), Box<dyn Error>>
+{
+    let reviewer = qualified_reviewer(
+        "actor_reviewer_001",
+        "operator_reviewer",
+        "conflict_reviewer",
+    )?;
+    let result = submit_review(
+        create_review_task(review_context()?)?,
+        ReviewClaimContext {
+            open_blocking_findings_elsewhere: true,
+            ..review_claim_context(reviewer)?
+        },
+        ReviewSubmission::approved_no_findings(),
+    )?;
+
+    assert_eq!(result.review.state, ReviewRecordState::Accepted);
+    assert_eq!(result.artifact_state, ArtifactState::MachineValidated);
+    assert_eq!(
+        result.public_label,
+        Some(PublicArtifactLabel::MachineValidated)
+    );
     Ok(())
 }
 

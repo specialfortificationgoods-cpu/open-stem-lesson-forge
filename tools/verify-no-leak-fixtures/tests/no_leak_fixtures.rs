@@ -125,9 +125,10 @@ fn common_secret_path_and_grade_shapes_fail_safely() -> Result<(), Box<dyn Error
         );
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(stderr.contains(reason), "expected reason {reason}");
+        let escaped_unsafe_value = unsafe_value.replace('\\', "\\\\");
         assert!(
-            !stderr.contains(unsafe_value),
-            "stderr must not echo unsafe value"
+            !stderr.contains(unsafe_value) && !stderr.contains(&escaped_unsafe_value),
+            "stderr must not echo unsafe value in raw or escaped form"
         );
     }
     Ok(())

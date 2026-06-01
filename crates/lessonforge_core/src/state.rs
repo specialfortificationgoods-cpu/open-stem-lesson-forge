@@ -911,7 +911,6 @@ impl Lease {
     }
 
     fn apply_submission(mut self, submission: LeaseSubmission) -> Result<Self, LeaseError> {
-        self.require_active()?;
         self.require_actor(&submission.actor_id)?;
         if self.entity_type != submission.entity_type || self.entity_id != submission.entity_id {
             return Err(LeaseError::EntityMismatch);
@@ -923,6 +922,16 @@ impl Lease {
         {
             return Err(LeaseError::MissingSubmissionRecord);
         }
+        if let Some(record) = &self.submission {
+            if record.key == submission.idempotency_key
+                && record.payload_digest == submission.payload_digest
+                && record.result_id == submission.result_id
+            {
+                return Ok(self);
+            }
+            return Err(LeaseError::IdempotencyConflict);
+        }
+        self.require_active()?;
         self.submission = Some(IdempotencyRecord {
             key: submission.idempotency_key,
             payload_digest: submission.payload_digest,
