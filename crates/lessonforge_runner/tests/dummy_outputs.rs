@@ -90,6 +90,25 @@ fn dummy_generator_writes_valid_bundle_and_authoritative_digests() -> Result<(),
         output.provenance.runner_self_test_report.self_test_status,
         "not_run_sandbox_unavailable"
     );
+    assert!(
+        output
+            .provenance
+            .runner_self_test_report
+            .self_test_report_id
+            .starts_with("rselftest_")
+    );
+    assert_ne!(
+        output
+            .provenance
+            .runner_self_test_report
+            .self_test_report_id,
+        "rselftest_energy_001"
+    );
+    assert_rfc3339_utc(&output.provenance.runner_self_test_report.created_at);
+    assert_ne!(
+        output.provenance.runner_self_test_report.created_at,
+        "2026-05-30T00:00:00Z"
+    );
     assert_eq!(
         output.provenance.runner_self_test_report.work_packet_id,
         context.work_packet_id
@@ -145,6 +164,16 @@ fn dummy_generator_writes_valid_bundle_and_authoritative_digests() -> Result<(),
         output
             .provenance
             .runner_self_test_report
+            .self_test_report_id,
+        other_output
+            .provenance
+            .runner_self_test_report
+            .self_test_report_id
+    );
+    assert_ne!(
+        output
+            .provenance
+            .runner_self_test_report
             .attestation
             .signed_payload_digest,
         other_output
@@ -195,6 +224,23 @@ fn dummy_generator_writes_valid_bundle_and_authoritative_digests() -> Result<(),
         output.provenance.bundle_digest
     );
     Ok(())
+}
+
+fn assert_rfc3339_utc(value: &str) {
+    assert_eq!(value.len(), 20);
+    assert_eq!(&value[4..5], "-");
+    assert_eq!(&value[7..8], "-");
+    assert_eq!(&value[10..11], "T");
+    assert_eq!(&value[13..14], ":");
+    assert_eq!(&value[16..17], ":");
+    assert_eq!(&value[19..20], "Z");
+    assert!(
+        value
+            .chars()
+            .enumerate()
+            .filter(|(index, _)| !matches!(index, 4 | 7 | 10 | 13 | 16 | 19))
+            .all(|(_, character)| character.is_ascii_digit())
+    );
 }
 
 #[test]

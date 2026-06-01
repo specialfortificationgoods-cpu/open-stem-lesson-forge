@@ -19,10 +19,13 @@ use std::os::unix::fs::OpenOptionsExt as _;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use thiserror::Error;
 
 const MAX_ED25519_KEY_FILE_BYTES: u64 = 1024;
+static SELF_TEST_REPORT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub fn crate_boundary() -> &'static str {
     "local_runner"
@@ -1062,8 +1065,9 @@ fn sandbox_unavailable_self_test_report(
     file_digests: BTreeMap<String, String>,
     bundle_digest: String,
 ) -> Result<RunnerSelfTestReport, RunnerOutputError> {
+    let (self_test_report_id, created_at) = self_test_report_provenance(context);
     let mut report = RunnerSelfTestReport {
-        self_test_report_id: "rselftest_energy_001".to_owned(),
+        self_test_report_id,
         work_packet_id: context.work_packet_id.clone(),
         lease_id: context.lease_id.clone(),
         runner_actor_id: context.runner_actor_id.clone(),
@@ -1083,10 +1087,61 @@ fn sandbox_unavailable_self_test_report(
                 "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
             signature: String::new(),
         },
-        created_at: "2026-05-30T00:00:00Z".to_owned(),
+        created_at,
     };
     seal_self_test_report(validated, &mut report)?;
     Ok(report)
+}
+
+fn self_test_report_provenance(context: &DummyGenerationContext) -> (String, String) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let counter = SELF_TEST_REPORT_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let created_at = rfc3339_utc_from_unix_seconds(now.as_secs());
+    let mut hasher = Sha256::new();
+    hasher.update(context.work_packet_id.as_bytes());
+    hasher.update(context.lease_id.as_bytes());
+    hasher.update(context.runner_actor_id.as_bytes());
+    hasher.update(now.as_secs().to_be_bytes());
+    hasher.update(now.subsec_nanos().to_be_bytes());
+    hasher.update(counter.to_be_bytes());
+    let digest = hasher.finalize();
+    let mut id_bytes = [0_u8; 8];
+    id_bytes.copy_from_slice(&digest[..8]);
+    (
+        format!("rselftest_{:016x}", u64::from_be_bytes(id_bytes)),
+        created_at,
+    )
+}
+
+fn rfc3339_utc_from_unix_seconds(seconds: u64) -> String {
+    let days = (seconds / 86_400) as i64;
+    let seconds_of_day = seconds % 86_400;
+    let (year, month, day) = civil_date_from_unix_days(days);
+    let hour = seconds_of_day / 3_600;
+    let minute = (seconds_of_day % 3_600) / 60;
+    let second = seconds_of_day % 60;
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
+}
+
+fn civil_date_from_unix_days(days: i64) -> (i64, u32, u32) {
+    let shifted_days = days + 719_468;
+    let era = if shifted_days >= 0 {
+        shifted_days
+    } else {
+        shifted_days - 146_096
+    } / 146_097;
+    let day_of_era = shifted_days - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
+    let month = month_prime + if month_prime < 10 { 3 } else { -9 };
+    let year = year + i64::from(month <= 2);
+    (year, month as u32, day as u32)
 }
 
 fn sandbox_unavailable_checks() -> Vec<RunnerSelfTestCheck> {
