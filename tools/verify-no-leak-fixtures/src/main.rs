@@ -136,20 +136,37 @@ fn scan_path(path: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
 }
 
 fn scan_json_strings(path: &Path, value: &Value, findings: &mut Vec<Finding>) {
+    scan_json_strings_with_context(path, value, "", findings);
+}
+
+fn scan_json_strings_with_context(
+    path: &Path,
+    value: &Value,
+    context: &str,
+    findings: &mut Vec<Finding>,
+) {
     match value {
-        Value::String(text) => scan_text(path, text, findings),
+        Value::String(text) => {
+            scan_text(path, text, findings);
+            scan_contextual_text(path, context, text, findings);
+        }
         Value::Array(values) => {
             for child in values {
-                scan_json_strings(path, child, findings);
+                scan_json_strings_with_context(path, child, context, findings);
             }
         }
         Value::Object(object) => {
             for (key, child) in object {
                 scan_key(path, key, findings);
-                scan_json_strings(path, child, findings);
+                let child_context = json_child_context(context, key);
+                scan_json_strings_with_context(path, child, &child_context, findings);
             }
         }
-        Value::Null | Value::Bool(_) | Value::Number(_) => {}
+        Value::Number(number) => {
+            let rendered = number.to_string();
+            scan_contextual_text(path, context, &rendered, findings);
+        }
+        Value::Null | Value::Bool(_) => {}
     }
 }
 
@@ -159,6 +176,22 @@ fn scan_text(path: &Path, text: &str, findings: &mut Vec<Finding>) {
             path: path.to_path_buf(),
             reason,
         });
+    }
+}
+
+fn scan_contextual_text(path: &Path, context: &str, text: &str, findings: &mut Vec<Finding>) {
+    if context.is_empty() {
+        return;
+    }
+    let combined = format!("{context} {text}");
+    scan_text(path, &combined, findings);
+}
+
+fn json_child_context(parent: &str, key: &str) -> String {
+    if parent.is_empty() {
+        key.to_owned()
+    } else {
+        format!("{parent} {key}")
     }
 }
 
@@ -1047,5 +1080,25 @@ mod tests {
                 "{key} should not fail as a secret-like key"
             );
         }
+    }
+
+    #[test]
+    fn json_object_keys_provide_pii_context_for_values() {
+        let value = serde_json::json!({
+            "student_id": 123456789,
+            "quiz_score": "90/100",
+            "student": {
+                "name": "Jane Smith"
+            }
+        });
+        let mut findings = Vec::new();
+
+        scan_json_strings(Path::new("fixture.json"), &value, &mut findings);
+
+        let pii_like_count = findings
+            .iter()
+            .filter(|finding| finding.reason == "student_pii_like_value")
+            .count();
+        assert_eq!(pii_like_count, 3);
     }
 }

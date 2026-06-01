@@ -38,6 +38,10 @@ MVP required modes:
 - `dummy_planner`
 - `dummy_plan_verifier`
 - `dummy_generator`
+
+Spec `014` preview modes are optional and non-MVP until a later gate activates
+the central code-critique and code-repair ingestion API surfaces:
+
 - `dummy_code_critic`
 - `dummy_code_repairer`
 - `dummy_code_repairer_auto_loop`
@@ -304,11 +308,17 @@ lessonforge-runner capability-summary --config lessonforge.runner.toml
 lessonforge-runner list-claimable --config lessonforge.runner.toml --kind planning
 lessonforge-runner list-claimable --config lessonforge.runner.toml --kind plan-verification
 lessonforge-runner list-claimable --config lessonforge.runner.toml --kind generation
-lessonforge-runner list-claimable --config lessonforge.runner.toml --kind code-critique
-lessonforge-runner list-claimable --config lessonforge.runner.toml --kind code-repair
 lessonforge-runner run-once --config lessonforge.runner.toml --kind planning
 lessonforge-runner run-once --config lessonforge.runner.toml --kind plan-verification
 lessonforge-runner run-once --config lessonforge.runner.toml --kind generation
+```
+
+Spec `014` preview CLI commands are optional and must fail against the MVP
+central API until spec `014` ingestion surfaces are activated:
+
+```text
+lessonforge-runner list-claimable --config lessonforge.runner.toml --kind code-critique
+lessonforge-runner list-claimable --config lessonforge.runner.toml --kind code-repair
 lessonforge-runner run-once --config lessonforge.runner.toml --kind code-critique
 lessonforge-runner run-once --config lessonforge.runner.toml --kind code-repair
 ```

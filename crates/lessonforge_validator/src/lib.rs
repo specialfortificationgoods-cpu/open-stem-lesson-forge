@@ -20,6 +20,10 @@ const ALLOWED_FILES: [&str; 5] = [
     "checker.py",
     "teacher_notes.md",
 ];
+const ALLOWED_SUBJECTS: [&str; 1] = ["physics"];
+const ALLOWED_TOPICS: [&str; 1] = ["conservation_of_energy"];
+const ALLOWED_AGE_RANGES: [&str; 1] = ["14-16"];
+const ALLOWED_LANGUAGES: [&str; 1] = ["en"];
 const DIGEST_FILE_ORDER: [&str; 5] = [
     "answer_key.md",
     "checker.py",
@@ -885,10 +889,10 @@ fn manifest_schema_values_are_valid(manifest: &ArtifactManifest) -> bool {
             .all(|work_packet_id| valid_id_claim(work_packet_id, "wp_"))
         && safe_length(&manifest.title, 1, 120)
         && !unsafe_public_text(&manifest.title)
-        && manifest.subject == "physics"
-        && manifest.topic == "conservation_of_energy"
-        && manifest.age_range == "14-16"
-        && manifest.language == "en"
+        && ALLOWED_SUBJECTS.contains(&manifest.subject.as_str())
+        && ALLOWED_TOPICS.contains(&manifest.topic.as_str())
+        && ALLOWED_AGE_RANGES.contains(&manifest.age_range.as_str())
+        && ALLOWED_LANGUAGES.contains(&manifest.language.as_str())
         && manifest.license == "CC-BY-4.0"
         && manifest.status_claim == "draft_generated"
         && manifest.ai_assisted
