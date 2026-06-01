@@ -1,0 +1,19 @@
+[package]
+name = "lessonforge_api"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+getrandom.workspace = true
+hmac.workspace = true
+lessonforge_core = { path = "../lessonforge_core", version = "0.1.0" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

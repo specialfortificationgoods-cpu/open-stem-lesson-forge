@@ -1,0 +1,15 @@
+{
+  "artifact_id": "art_energy_001",
+  "request_id": "req_energy_001",
+  "work_packet_ids": ["wp_energy_001_generate_pack"],
+  "title": "Conservation of energy lesson pack",
+  "subject": "physics",
+  "topic": "conservation_of_energy",
+  "age_range": "14-16",
+  "language": "en",
+  "license": "CC-BY-4.0",
+  "status_claim": "draft_generated",
+  "ai_assisted": true,
+  "contents": ["manifest.json", "worksheet.md", "answer_key.md", "checker.py", "teacher_notes.md"],
+  "known_limitations": ["Curriculum standard alignment requires teacher review."]
+}

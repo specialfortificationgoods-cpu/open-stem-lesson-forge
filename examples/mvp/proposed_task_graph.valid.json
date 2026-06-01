@@ -1,0 +1,90 @@
+{
+  "proposal_id": "plan_energy_001_a",
+  "request_id": "req_energy_001",
+  "planning_task_id": "ptask_energy_001",
+  "planner_runner_id": "actor_planner_001",
+  "schema_version": "1.0",
+  "status": "proposed",
+  "source_request_summary": {
+    "subject": "physics",
+    "topic": "conservation_of_energy",
+    "age_range": "14-16",
+    "duration_minutes": 45,
+    "language": "en"
+  },
+  "assumptions": ["Students can substitute values into simple formulas."],
+  "missing_information": ["Curriculum standard is not specified."],
+  "proposed_artifacts": [
+    { "artifact_type": "worksheet", "priority": "required" },
+    { "artifact_type": "answer_key", "priority": "required" },
+    { "artifact_type": "python_checker", "priority": "required" },
+    { "artifact_type": "teacher_notes", "priority": "required" }
+  ],
+  "validation_plan": [
+    "manifest_schema",
+    "required_files",
+    "license_metadata",
+    "ai_assistance_disclosure",
+    "obvious_pii_heuristic",
+    "obvious_inappropriate_content_heuristic",
+    "python_checker_runs",
+    "no_external_network_static"
+  ],
+  "human_review_required_for": ["peer_reviewed"],
+  "proposed_tasks": [
+    {
+      "local_id": "generate_pack",
+      "phase": "initial_generation",
+      "task_type": "generate_lesson_pack",
+      "subject": "physics",
+      "topic": "conservation_of_energy",
+      "age_range": "14-16",
+      "language": "en",
+      "risk_level": "low",
+      "execution_policy": "code_generation_only",
+      "required_capabilities": ["stem_pedagogy", "structured_markdown", "basic_python"],
+      "outputs": ["worksheet.md", "answer_key.md", "checker.py", "teacher_notes.md", "manifest.json"],
+      "validation_required": [
+        "manifest_schema",
+        "required_files",
+        "license_metadata",
+        "ai_assistance_disclosure",
+        "obvious_pii_heuristic",
+        "obvious_inappropriate_content_heuristic",
+        "python_checker_runs",
+        "no_external_network_static"
+      ],
+      "human_review_required_for": ["peer_reviewed"]
+    },
+    {
+      "local_id": "validate_bundle",
+      "phase": "mechanical_validation",
+      "task_type": "run_artifact_validation",
+      "subject": "physics",
+      "topic": "conservation_of_energy",
+      "age_range": "14-16",
+      "language": "en",
+      "risk_level": "low",
+      "depends_on": ["generate_pack"],
+      "required_capabilities": ["artifact_validation", "python_execution_limited"],
+      "outputs": ["validation_report.json"],
+      "validation_required": [],
+      "human_review_required_for": []
+    },
+    {
+      "local_id": "human_review",
+      "phase": "human_review",
+      "task_type": "review_subject_and_pedagogy",
+      "subject": "physics",
+      "topic": "conservation_of_energy",
+      "age_range": "14-16",
+      "language": "en",
+      "risk_level": "low",
+      "depends_on": ["validate_bundle"],
+      "required_capabilities": ["human_subject_review", "human_pedagogy_review"],
+      "outputs": ["review.json"],
+      "validation_required": [],
+      "human_review_required_for": ["peer_reviewed"]
+    }
+  ]
+}

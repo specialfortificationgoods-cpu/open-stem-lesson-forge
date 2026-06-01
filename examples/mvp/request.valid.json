@@ -1,0 +1,18 @@
+{
+  "title": "Conservation of energy lesson pack",
+  "subject": "physics",
+  "topic": "conservation_of_energy",
+  "age_range": "14-16",
+  "language": "en",
+  "lesson_duration_minutes": 45,
+  "desired_artifacts": ["worksheet", "answer_key", "python_checker", "teacher_notes"],
+  "constraints": [
+    "no calculus",
+    "include kinetic and gravitational potential energy",
+    "include one frictionless ramp problem",
+    "include an extension question for stronger students"
+  ],
+  "license_preference": "CC-BY-4.0",
+  "visibility": "public",
+  "forbidden_content_acknowledged": true
+}

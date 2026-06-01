@@ -1,0 +1,23 @@
+[package]
+name = "lessonforge-e2e"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lessonforge_api = { path = "../../crates/lessonforge_api", version = "0.1.0" }
+lessonforge_core = { path = "../../crates/lessonforge_core", version = "0.1.0" }
+lessonforge_runner = { path = "../../crates/lessonforge_runner", version = "0.1.0" }
+lessonforge_schema = { path = "../../crates/lessonforge_schema", version = "0.1.0" }
+lessonforge_validator = { path = "../../crates/lessonforge_validator", version = "0.1.0" }
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+
+[lints]
+workspace = true

@@ -1,0 +1,304 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Proposed Task Graph",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "proposal_id",
+    "request_id",
+    "planning_task_id",
+    "planner_runner_id",
+    "schema_version",
+    "status",
+    "source_request_summary",
+    "assumptions",
+    "missing_information",
+    "proposed_artifacts",
+    "proposed_tasks",
+    "validation_plan",
+    "human_review_required_for"
+  ],
+  "$defs": {
+    "required_capabilities_enum": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "stem_pedagogy",
+          "structured_markdown",
+          "basic_python",
+          "artifact_validation",
+          "python_execution_limited",
+          "human_subject_review",
+          "human_pedagogy_review"
+        ]
+      }
+    },
+    "validation_required_enum": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "manifest_schema",
+          "required_files",
+          "license_metadata",
+          "ai_assistance_disclosure",
+          "obvious_pii_heuristic",
+          "obvious_inappropriate_content_heuristic",
+          "python_checker_runs",
+          "no_external_network_static"
+        ]
+      }
+    }
+  },
+  "properties": {
+    "proposal_id": { "type": "string", "pattern": "^plan_[a-z0-9_-]+$" },
+    "request_id": { "const": "req_energy_001" },
+    "planning_task_id": { "const": "ptask_energy_001" },
+    "planner_runner_id": { "type": "string", "pattern": "^actor_[a-z0-9_-]+$" },
+    "schema_version": { "const": "1.0" },
+    "status": { "const": "proposed" },
+    "source_request_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject", "topic", "age_range", "duration_minutes", "language"],
+      "properties": {
+        "subject": { "const": "physics" },
+        "topic": { "const": "conservation_of_energy" },
+        "age_range": { "const": "14-16" },
+        "duration_minutes": { "const": 45 },
+        "language": { "const": "en" }
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "maxItems": 12,
+      "items": { "type": "string", "maxLength": 240 }
+    },
+    "missing_information": {
+      "type": "array",
+      "maxItems": 12,
+      "items": { "type": "string", "maxLength": 240 }
+    },
+    "proposed_artifacts": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["artifact_type", "priority"],
+        "properties": {
+          "artifact_type": {
+            "enum": ["worksheet", "answer_key", "python_checker", "teacher_notes"]
+          },
+          "priority": { "const": "required" }
+        }
+      }
+    },
+    "validation_plan": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "manifest_schema",
+          "required_files",
+          "license_metadata",
+          "ai_assistance_disclosure",
+          "obvious_pii_heuristic",
+          "obvious_inappropriate_content_heuristic",
+          "python_checker_runs",
+          "no_external_network_static"
+        ]
+      }
+    },
+    "human_review_required_for": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": { "const": "peer_reviewed" }
+    },
+    "proposed_tasks": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "local_id",
+              "phase",
+              "task_type",
+              "subject",
+              "topic",
+              "age_range",
+              "language",
+              "risk_level",
+              "required_capabilities",
+              "outputs",
+              "validation_required",
+              "human_review_required_for",
+              "execution_policy"
+            ],
+            "properties": {
+              "local_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-z0-9_-]+$"
+              },
+              "phase": { "const": "initial_generation" },
+              "task_type": { "const": "generate_lesson_pack" },
+              "subject": { "const": "physics" },
+              "topic": { "const": "conservation_of_energy" },
+              "age_range": { "const": "14-16" },
+              "language": { "const": "en" },
+              "risk_level": { "const": "low" },
+              "depends_on": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "type": "string", "maxLength": 64, "pattern": "^[a-z0-9_-]+$" }
+              },
+              "required_capabilities": { "$ref": "#/$defs/required_capabilities_enum" },
+              "outputs": {
+                "type": "array",
+                "minItems": 5,
+                "maxItems": 5,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "worksheet.md",
+                    "answer_key.md",
+                    "checker.py",
+                    "teacher_notes.md",
+                    "manifest.json"
+                  ]
+                }
+              },
+              "validation_required": { "$ref": "#/$defs/validation_required_enum" },
+              "human_review_required_for": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "const": "peer_reviewed" }
+              },
+              "execution_policy": { "const": "code_generation_only" }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "local_id",
+              "phase",
+              "task_type",
+              "subject",
+              "topic",
+              "age_range",
+              "language",
+              "risk_level",
+              "depends_on",
+              "required_capabilities",
+              "outputs",
+              "validation_required",
+              "human_review_required_for"
+            ],
+            "properties": {
+              "local_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-z0-9_-]+$"
+              },
+              "phase": { "const": "mechanical_validation" },
+              "task_type": { "const": "run_artifact_validation" },
+              "subject": { "const": "physics" },
+              "topic": { "const": "conservation_of_energy" },
+              "age_range": { "const": "14-16" },
+              "language": { "const": "en" },
+              "risk_level": { "const": "low" },
+              "depends_on": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "type": "string", "maxLength": 64, "pattern": "^[a-z0-9_-]+$" }
+              },
+              "required_capabilities": { "$ref": "#/$defs/required_capabilities_enum" },
+              "outputs": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "const": "validation_report.json"
+                }
+              },
+              "validation_required": { "$ref": "#/$defs/validation_required_enum" },
+              "human_review_required_for": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "const": "peer_reviewed" }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "local_id",
+              "phase",
+              "task_type",
+              "subject",
+              "topic",
+              "age_range",
+              "language",
+              "risk_level",
+              "depends_on",
+              "required_capabilities",
+              "outputs",
+              "validation_required",
+              "human_review_required_for"
+            ],
+            "properties": {
+              "local_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-z0-9_-]+$"
+              },
+              "phase": { "const": "human_review" },
+              "task_type": { "const": "review_subject_and_pedagogy" },
+              "subject": { "const": "physics" },
+              "topic": { "const": "conservation_of_energy" },
+              "age_range": { "const": "14-16" },
+              "language": { "const": "en" },
+              "risk_level": { "const": "low" },
+              "depends_on": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "type": "string", "maxLength": 64, "pattern": "^[a-z0-9_-]+$" }
+              },
+              "required_capabilities": { "$ref": "#/$defs/required_capabilities_enum" },
+              "outputs": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "const": "review.json"
+                }
+              },
+              "validation_required": { "$ref": "#/$defs/validation_required_enum" },
+              "human_review_required_for": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "const": "peer_reviewed" }
+              }
+            }
+          }
+      ]
+    }
+  }
+}
