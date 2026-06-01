@@ -368,6 +368,8 @@ pub fn submit_review(
     } else {
         context.artifact_state
     };
+    let previously_public =
+        artifact_was_public_before_review(context.artifact_state, task.visibility);
     Ok(ReviewSubmissionResult {
         review: ReviewRecord {
             schema_version: "human-review-record-v1",
@@ -392,9 +394,19 @@ pub fn submit_review(
         public_label: derive_public_label(ArtifactPublicationInput {
             state: artifact_state,
             visibility: task.visibility,
-            previously_public: promotes,
+            previously_public,
         }),
     })
+}
+
+fn artifact_was_public_before_review(state: ArtifactState, visibility: ArtifactVisibility) -> bool {
+    visibility == ArtifactVisibility::Public
+        && matches!(
+            state,
+            ArtifactState::MachineValidated
+                | ArtifactState::ReviewRequested
+                | ArtifactState::PeerReviewed
+        )
 }
 
 pub fn validate_review_claim(
