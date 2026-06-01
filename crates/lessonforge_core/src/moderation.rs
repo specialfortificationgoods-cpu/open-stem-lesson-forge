@@ -144,6 +144,9 @@ fn matching_reason_present(
     decision: ModerationDecision,
     reasons: &[ModerationSafeReason],
 ) -> bool {
+    // Quarantine is a safe terminal review path rather than a category-specific
+    // rejection, so the general quarantine reason deliberately satisfies every
+    // flagged category for quarantine decisions only.
     if decision == ModerationDecision::QuarantineRequest
         && reasons.contains(&ModerationSafeReason::ModerationQuarantineReviewNeeded)
     {
@@ -173,6 +176,9 @@ fn reason_matches_flagged_category(
     decision: ModerationDecision,
     categories: &[ModerationCategory],
 ) -> bool {
+    // Keep this symmetric with matching_reason_present: the general quarantine
+    // reason is valid for any flagged category only when the decision is
+    // QuarantineRequest.
     if decision == ModerationDecision::QuarantineRequest
         && reason == ModerationSafeReason::ModerationQuarantineReviewNeeded
     {
@@ -181,4 +187,57 @@ fn reason_matches_flagged_category(
     categories
         .iter()
         .any(|category| matching_reason_present(*category, decision, &[reason]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quarantine_review_reason_short_circuits_all_flagged_categories() {
+        let flagged_categories = [
+            ModerationCategory::Sexual,
+            ModerationCategory::SexualMinors,
+            ModerationCategory::Violence,
+            ModerationCategory::SelfHarm,
+            ModerationCategory::Hate,
+            ModerationCategory::Harassment,
+            ModerationCategory::Illicit,
+            ModerationCategory::Weapons,
+            ModerationCategory::Privacy,
+            ModerationCategory::AgeInappropriate,
+        ];
+
+        for category in flagged_categories {
+            assert!(matching_reason_present(
+                category,
+                ModerationDecision::QuarantineRequest,
+                &[ModerationSafeReason::ModerationQuarantineReviewNeeded],
+            ));
+            assert!(reason_matches_flagged_category(
+                ModerationSafeReason::ModerationQuarantineReviewNeeded,
+                ModerationDecision::QuarantineRequest,
+                &[category],
+            ));
+        }
+    }
+
+    #[test]
+    fn reject_request_still_requires_category_specific_reasons() {
+        assert!(!matching_reason_present(
+            ModerationCategory::Violence,
+            ModerationDecision::RejectRequest,
+            &[ModerationSafeReason::ModerationQuarantineReviewNeeded],
+        ));
+        assert!(!reason_matches_flagged_category(
+            ModerationSafeReason::ModerationQuarantineReviewNeeded,
+            ModerationDecision::RejectRequest,
+            &[ModerationCategory::Violence],
+        ));
+        assert!(matching_reason_present(
+            ModerationCategory::Violence,
+            ModerationDecision::RejectRequest,
+            &[ModerationSafeReason::ModerationRejectedViolence],
+        ));
+    }
 }

@@ -510,6 +510,8 @@ fn finding_policy_rejects_invalid_severity_unsafe_text_and_laundered_blocking_fl
         "/home/alice/.ssh/id_rsa",
         "~/Library/Application Support/app/state",
         r"C:\Users\alice\.codex\auth.json",
+        r"D:\Users\alice\.codex\auth.json",
+        "z:/Users/alice/.codex/auth.json",
         ".codex/auth.json",
         "Student Alice scored 90",
         "student: Alice",

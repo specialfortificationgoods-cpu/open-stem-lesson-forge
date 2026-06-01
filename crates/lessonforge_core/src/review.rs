@@ -704,7 +704,7 @@ fn safe_text(value: &str) -> bool {
         && !lower.contains("/etc/")
         && !lower.contains("~/")
         && !lower.contains("\\users\\")
-        && !lower.contains("c:\\")
+        && !contains_windows_absolute_path(&lower)
         && !lower.contains(".codex")
         && !lower.contains(".ssh")
         && !lower.contains("auth.json")
@@ -714,6 +714,12 @@ fn safe_text(value: &str) -> bool {
         && !contains_student_pii_marker(value, &lower)
         && !lower.contains("```")
         && !lower.contains("<script")
+}
+
+fn contains_windows_absolute_path(lower: &str) -> bool {
+    lower.as_bytes().windows(3).any(|window| {
+        window[0].is_ascii_lowercase() && window[1] == b':' && matches!(window[2], b'\\' | b'/')
+    })
 }
 
 fn contains_sensitive_review_marker(lower: &str) -> bool {

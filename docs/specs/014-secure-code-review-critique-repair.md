@@ -387,7 +387,7 @@ Decision consistency:
   - `sandbox_unavailable_continue_elsewhere`
 - `suspected_looping_bug` may only map to `stop_exhausted_attempts` with `loop_suspected_stop` or `mark_repair_bug_for_human_triage` with `human_triage_required`.
 - `suspected_malicious_task` may only map to `quarantine_request_or_artifact` with `curator_quarantine` or `mark_repair_bug_for_human_triage` with `malicious_task_suspected_stop`.
-- `local_policy_refused` may only map to `stop_policy_refused` with `operator_budget_stop` or `mark_repair_bug_for_human_triage` with `human_triage_required`.
+- `local_policy_refused` may only map to `stop_policy_refused` with `local_policy_refused_stop` or `mark_repair_bug_for_human_triage` with `human_triage_required`.
 - Curator/admin override to continue after suspected malicious task, suspected looping bug, or local policy refusal is deferred; no MVP command supports it.
 
 Side effects:
