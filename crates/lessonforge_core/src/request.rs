@@ -158,7 +158,7 @@ pub fn accept_request_intake(
     let desired_artifacts = required_desired_artifacts(object)?;
     let constraints = optional_constraints(object)?;
     let license_preference = required_enum(object, "license_preference", &["CC-BY-4.0"])?;
-    let visibility = optional_visibility(object, context.default_visibility)?;
+    let visibility = required_visibility(object)?;
     let auto_repair_preference =
         optional_auto_repair_preference(object, context.default_auto_repair_preference)?;
     require_true(object, "forbidden_content_acknowledged")?;
@@ -545,9 +545,8 @@ fn require_true(
     })
 }
 
-fn optional_visibility(
+fn required_visibility(
     object: &serde_json::Map<String, Value>,
-    _default: StoredRequestVisibility,
 ) -> Result<StoredRequestVisibility, RequestWorkflowError> {
     match object.get("visibility") {
         None => Err(RequestWorkflowError::Rejected {

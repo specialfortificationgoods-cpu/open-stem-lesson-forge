@@ -11,6 +11,7 @@ const REQUEST_MODERATION_REPORT_SCHEMA: &str = "request_moderation_report.schema
 const PROPOSED_TASK_GRAPH_SCHEMA: &str = "proposed_task_graph.schema.json";
 const PLAN_VERIFICATION_SCHEMA: &str = "plan_verification.schema.json";
 const ARTIFACT_MANIFEST_SCHEMA: &str = "artifact_manifest.schema.json";
+const PLAN_VERIFICATION_SAFE_FINDING_MESSAGE_PATTERN: &str = "^(?!.*(?:://|@|[Ss][Ee][Cc][Rr][Ee][Tt]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Cc][Oo][Oo][Kk][Ii][Ee]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Tt][Uu][Dd][Ee][Nn][Tt] [Rr][Ee][Cc][Oo][Rr][Dd]|[Ss][Tt][Uu][Dd][Ee][Nn][Tt] [Gg][Rr][Aa][Dd][Ee]|[Ss][Tt][Uu][Dd][Ee][Nn][Tt] [Pp][Ll][Aa][Cc][Ee][Mm][Ee][Nn][Tt]|[Ss][Tt][Uu][Dd][Ee][Nn][Tt] [Pp][Rr][Oo][Ff][Ii][Ll][Ee]|[Pp][Ll][Aa][Cc][Ee][Mm][Ee][Nn][Tt] [Dd][Ee][Cc][Ii][Ss][Ii][Oo][Nn]|[Dd][Ii][Ss][Cc][Ii][Pp][Ll][Ii][Nn][Aa][Rr][Yy] [Rr][Ee][Cc][Oo][Rr][Dd]|[Dd][Ii][Ss][Cc][Ii][Pp][Ll][Ii][Nn][Aa][Rr][Yy] [Aa][Cc][Tt][Ii][Oo][Nn]|/Users/|/home/|/etc/|/private/|/var/|/tmp/|C:\\\\|\\.\\./|~/|[Ss][Ss][Hh]/|[Hh][Uu][Mm][Aa][Nn] [Aa][Pp][Pp][Rr][Oo][Vv][Aa][Ll]|[Hh][Uu][Mm][Aa][Nn] [Aa][Pp][Pp][Rr][Oo][Vv][Ee][Dd]|[Pp][Ee][Ee][Rr] [Rr][Ee][Vv][Ii][Ee][Ww][Ee][Dd]|[Pp][Ee][Ee][Rr]_[Rr][Ee][Vv][Ii][Ee][Ww][Ee][Dd]|[Pp][Rr][Oo][Mm][Oo][Tt][Ee]|[Pp][Rr][Oo][Mm][Oo][Tt][Ii][Oo][Nn]|[Pp][Uu][Bb][Ll][Ii][Ss][Hh]|[Pp][Uu][Bb][Ll][Ii][Cc][Aa][Tt][Ii][Oo][Nn]|[Ss][Tt][Aa][Tt][Ee] [Oo][Vv][Ee][Rr][Rr][Ii][Dd][Ee]|[Oo][Vv][Ee][Rr][Rr][Ii][Dd][Ee] [Ss][Tt][Aa][Tt][Ee]|[Aa][Cc][Cc][Ee][Pp][Tt][Ee][Dd] [Vv][Ee][Rr][Ii][Ff][Ii][Cc][Aa][Tt][Ii][Oo][Nn])).{1,500}$";
 
 const VALIDATION_CHECKS: &[&str] = &[
     "manifest_schema",
@@ -418,18 +419,7 @@ pub fn validate_plan_verification(value: &Value) -> Result<(), SchemaError> {
         "invalid_verification_status",
         "/status",
     )?;
-    require_eq(
-        SchemaName::PlanVerification,
-        verification.outcome == "no_blocking_findings",
-        "invalid_verification_outcome",
-        "/outcome",
-    )?;
-    require_eq(
-        SchemaName::PlanVerification,
-        verification.findings.is_empty(),
-        "blocking_findings_not_allowed",
-        "/findings",
-    )?;
+    validate_plan_verification_findings(&verification)?;
     require_exact_set(
         SchemaName::PlanVerification,
         &verification.checked_items,
@@ -451,6 +441,95 @@ pub fn validate_plan_verification(value: &Value) -> Result<(), SchemaError> {
         "/authority",
     )?;
     Ok(())
+}
+
+fn validate_plan_verification_findings(verification: &PlanVerification) -> Result<(), SchemaError> {
+    require_eq(
+        SchemaName::PlanVerification,
+        verification.findings.len() <= 20,
+        "too_many_findings",
+        "/findings",
+    )?;
+    for finding in &verification.findings {
+        require_eq(
+            SchemaName::PlanVerification,
+            valid_ascii_slug(&finding.check_name),
+            "invalid_finding_check_name",
+            "/findings/check_name",
+        )?;
+        require_eq(
+            SchemaName::PlanVerification,
+            matches!(finding.severity.as_str(), "blocking" | "warning"),
+            "invalid_finding_severity",
+            "/findings/severity",
+        )?;
+        require_eq(
+            SchemaName::PlanVerification,
+            (1..=500).contains(&finding.message.chars().count()),
+            "invalid_finding_message",
+            "/findings/message",
+        )?;
+        validate_plan_verification_finding_message(&finding.message)?;
+    }
+
+    match verification.outcome.as_str() {
+        "no_blocking_findings" => require_eq(
+            SchemaName::PlanVerification,
+            verification.findings.is_empty(),
+            "findings_not_allowed_for_success",
+            "/findings",
+        ),
+        "warnings_only" => require_eq(
+            SchemaName::PlanVerification,
+            !verification.findings.is_empty()
+                && verification
+                    .findings
+                    .iter()
+                    .all(|finding| finding.severity == "warning"),
+            "invalid_warning_findings",
+            "/findings",
+        ),
+        "blocking_findings" => require_eq(
+            SchemaName::PlanVerification,
+            !verification.findings.is_empty()
+                && verification
+                    .findings
+                    .iter()
+                    .all(|finding| finding.severity == "blocking"),
+            "invalid_blocking_findings",
+            "/findings",
+        ),
+        _ => Err(SchemaError::new(
+            SchemaName::PlanVerification,
+            "invalid_verification_outcome",
+            "/outcome",
+        )),
+    }
+}
+
+fn validate_plan_verification_finding_message(value: &str) -> Result<(), SchemaError> {
+    validate_safe_text(SchemaName::PlanVerification, value, "/findings/message")?;
+    require_eq(
+        SchemaName::PlanVerification,
+        !contains_plan_verification_authority_claim(value),
+        "unsafe_finding_message",
+        "/findings/message",
+    )
+}
+
+fn contains_plan_verification_authority_claim(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.contains("human approval")
+        || lower.contains("human approved")
+        || lower.contains("peer reviewed")
+        || lower.contains("peer_reviewed")
+        || lower.contains("promote")
+        || lower.contains("promotion")
+        || lower.contains("publish")
+        || lower.contains("publication")
+        || lower.contains("state override")
+        || lower.contains("override state")
+        || lower.contains("accepted verification")
 }
 
 pub fn validate_artifact_manifest(value: &Value) -> Result<(), SchemaError> {
@@ -1151,6 +1230,13 @@ fn schema_pattern_matches(pattern: &str, text: &str) -> bool {
                     .chars()
                     .all(|character| character.is_ascii_lowercase())
         }),
+        PLAN_VERIFICATION_SAFE_FINDING_MESSAGE_PATTERN => {
+            (1..=500).contains(&text.chars().count())
+                && !contains_unsafe_safe_text_marker(text)
+                && !contains_plan_verification_authority_claim(text)
+                && !text.contains('\0')
+                && !text.chars().any(char::is_control)
+        }
         "^[a-z0-9_-]+$" => valid_ascii_slug(text),
         _ => false,
     }
@@ -1163,6 +1249,7 @@ fn schema_pattern_is_supported(pattern: &str) -> bool {
             | "^actor_[a-z0-9_-]+$"
             | "^pverify_[a-z0-9_-]+$"
             | "^no_arbitrary_[a-z]{6}$"
+            | PLAN_VERIFICATION_SAFE_FINDING_MESSAGE_PATTERN
             | "^[a-z0-9_-]+$"
     )
 }
@@ -1465,6 +1552,13 @@ fn validate_safe_text(
     // Fixture schemas use this deliberately broad deterministic heuristic to keep
     // raw private values out of checked-in examples; errors expose only safe codes
     // and field paths, never the rejected value.
+    let unsafe_value = contains_unsafe_safe_text_marker(value)
+        || value.contains('\0')
+        || value.chars().any(char::is_control);
+    require_eq(schema, !unsafe_value, "unsafe_text_value", field_path)
+}
+
+fn contains_unsafe_safe_text_marker(value: &str) -> bool {
     let lower = value.to_ascii_lowercase();
     let has_local_path = value.contains("/Users/")
         || value.contains("/home/")
@@ -1476,7 +1570,7 @@ fn validate_safe_text(
         || value.contains("../")
         || value.contains("~/")
         || lower.contains("ssh/");
-    let unsafe_value = value.contains("://")
+    value.contains("://")
         || value.contains('@')
         || lower.contains("secret")
         || lower.contains("api_key")
@@ -1492,9 +1586,6 @@ fn validate_safe_text(
         || lower.contains("disciplinary record")
         || lower.contains("disciplinary action")
         || has_local_path
-        || value.contains('\0')
-        || value.chars().any(char::is_control);
-    require_eq(schema, !unsafe_value, "unsafe_text_value", field_path)
 }
 
 fn validate_safe_text_list(
@@ -1689,9 +1780,17 @@ struct PlanVerification {
     verification_type: String,
     status: String,
     outcome: String,
-    findings: Vec<String>,
+    findings: Vec<PlanVerificationFinding>,
     checked_items: Vec<String>,
     authority: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PlanVerificationFinding {
+    check_name: String,
+    severity: String,
+    message: String,
 }
 
 #[derive(Debug, Deserialize)]

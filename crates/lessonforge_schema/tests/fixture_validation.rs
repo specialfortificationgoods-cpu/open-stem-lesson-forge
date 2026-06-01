@@ -183,6 +183,110 @@ fn report_and_manifest_fixtures_are_closed() -> Result<(), Box<dyn Error>> {
     validate_plan_verification(&valid_plan_verification())?;
     validate_artifact_manifest(&valid_artifact_manifest())?;
 
+    let mut warning_verification = valid_plan_verification();
+    warning_verification["outcome"] = json!("warnings_only");
+    warning_verification["findings"] = json!([{
+        "check_name": "teacher_review_note",
+        "severity": "warning",
+        "message": "Teacher review should confirm local curriculum fit."
+    }]);
+    validate_plan_verification(&warning_verification)?;
+
+    let mut blocking_verification = valid_plan_verification();
+    blocking_verification["outcome"] = json!("blocking_findings");
+    blocking_verification["findings"] = json!([{
+        "check_name": "missing_human_review_gate",
+        "severity": "blocking",
+        "message": "Human review gate is missing."
+    }]);
+    validate_plan_verification(&blocking_verification)?;
+
+    let mut too_many_findings = valid_plan_verification();
+    too_many_findings["outcome"] = json!("warnings_only");
+    too_many_findings["findings"] = Value::Array(
+        (0..21)
+            .map(|index| {
+                json!({
+                    "check_name": format!("warning_{index}"),
+                    "severity": "warning",
+                    "message": "Teacher review should confirm local curriculum fit."
+                })
+            })
+            .collect(),
+    );
+    let too_many_error = match validate_plan_verification(&too_many_findings) {
+        Ok(()) => return Err("plan verification should reject more than 20 findings".into()),
+        Err(error) => error,
+    };
+    assert_eq!(too_many_error.code, "too_many_findings");
+
+    let mut mixed_blocking = valid_plan_verification();
+    mixed_blocking["outcome"] = json!("blocking_findings");
+    mixed_blocking["findings"] = json!([
+        {
+            "check_name": "missing_human_review_gate",
+            "severity": "blocking",
+            "message": "Human review gate is missing."
+        },
+        {
+            "check_name": "teacher_review_note",
+            "severity": "warning",
+            "message": "Teacher review should confirm local curriculum fit."
+        }
+    ]);
+    let mixed_blocking_error = match validate_plan_verification(&mixed_blocking) {
+        Ok(()) => return Err("blocking plan verification should reject mixed severities".into()),
+        Err(error) => error,
+    };
+    assert_eq!(mixed_blocking_error.code, "invalid_blocking_findings");
+
+    for unsafe_text in [
+        "See https://example.test for details.",
+        "Contact reviewer@example.test.",
+        "Contains secret marker.",
+        "Contains token marker.",
+        "See /Users/alice/private-notes.",
+        "Student record is referenced.",
+        "Human Approval granted; Promote to peer_reviewed.",
+        "Peer_Reviewed claim.",
+    ] {
+        let mut unsafe_message = valid_plan_verification();
+        unsafe_message["outcome"] = json!("warnings_only");
+        unsafe_message["findings"] = json!([{
+            "check_name": "unsafe_message",
+            "severity": "warning",
+            "message": unsafe_text
+        }]);
+        let unsafe_message_error = match validate_plan_verification(&unsafe_message) {
+            Ok(()) => {
+                return Err(
+                    format!("plan verification finding should reject {unsafe_text:?}").into(),
+                );
+            }
+            Err(error) => error,
+        };
+        assert!(
+            matches!(
+                unsafe_message_error.code,
+                "unsafe_text_value" | "unsafe_finding_message"
+            ),
+            "unexpected error for {unsafe_text:?}: {}",
+            unsafe_message_error.code
+        );
+    }
+
+    let mut inconsistent_verification = valid_plan_verification();
+    inconsistent_verification["findings"] = json!([{
+        "check_name": "unexpected_warning",
+        "severity": "warning",
+        "message": "Success reports must not carry findings."
+    }]);
+    let inconsistent_error = match validate_plan_verification(&inconsistent_verification) {
+        Ok(()) => return Err("successful plan verification should reject findings".into()),
+        Err(error) => error,
+    };
+    assert_eq!(inconsistent_error.code, "findings_not_allowed_for_success");
+
     let plan_schema =
         fs::read_to_string(workspace_root().join("schemas/plan_verification.schema.json"))?;
     assert!(plan_schema.contains("no_arbitrary_prompt"));
@@ -234,6 +338,34 @@ fn fixture_set_rejects_schema_and_example_drift() -> Result<(), Box<dyn Error>> 
     )?;
     let subset_private_report = verify_fixture_set(temp.path())?;
     assert_eq!(subset_private_report.checked_fixture_count, 5);
+
+    copy_tree(
+        &workspace_root().join("schemas"),
+        &temp.path().join("schemas"),
+    )?;
+    copy_tree(
+        &workspace_root().join("examples").join("mvp"),
+        &temp.path().join("examples").join("mvp"),
+    )?;
+    let mut unsafe_plan_verification = valid_plan_verification();
+    unsafe_plan_verification["outcome"] = json!("warnings_only");
+    unsafe_plan_verification["findings"] = json!([{
+        "check_name": "unsafe_message",
+        "severity": "warning",
+        "message": "See https://example.test for details."
+    }]);
+    fs::write(
+        temp.path()
+            .join("examples")
+            .join("mvp")
+            .join("plan_verification.valid.json"),
+        serde_json::to_string_pretty(&unsafe_plan_verification)?,
+    )?;
+    let unsafe_plan_error = match verify_fixture_set(temp.path()) {
+        Ok(_) => return Err("schema fixture validation should reject unsafe finding text".into()),
+        Err(error) => error,
+    };
+    assert_eq!(unsafe_plan_error.code, "fixture_schema_validation_failed");
 
     copy_tree(
         &workspace_root().join("schemas"),

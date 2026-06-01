@@ -327,17 +327,14 @@ impl DeterministicWorkflow {
         validate_review_claim(&task, &probe)?;
         let review_claim_secret = self.review_claim_secret()?;
         let expires_at = self.now.saturating_add(REVIEW_LEASE_TTL_SECONDS);
+        let claim_token =
+            derive_review_claim_token(&lease_id, idempotency_key, expires_at, review_claim_secret)?;
         let result = ReviewClaimResult {
             review_task_id: review_task_id.clone(),
             lease_id: lease_id.clone(),
             review_task_state: ReviewTaskState::Claimed,
             claim_token_returned: true,
-            claim_token: Some(derive_review_claim_token(
-                &lease_id,
-                idempotency_key,
-                expires_at,
-                review_claim_secret,
-            )),
+            claim_token: Some(claim_token),
             expires_at,
         };
         self.review_claim = Some(ReviewClaim {
@@ -683,10 +680,9 @@ fn derive_review_claim_token(
     claim_idempotency_key: &str,
     expires_at: u64,
     review_claim_secret: &str,
-) -> String {
-    let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(review_claim_secret.as_bytes()) else {
-        return String::new();
-    };
+) -> Result<String, ReviewPolicyError> {
+    let mut mac = Hmac::<Sha256>::new_from_slice(review_claim_secret.as_bytes())
+        .map_err(|_| ReviewPolicyError::ReviewVerifierSecretUnavailable)?;
     mac.update(
         format!(
             "lessonforge-review-claim-token-v3\0{}\0{}\0{}",
@@ -697,7 +693,7 @@ fn derive_review_claim_token(
         .as_bytes(),
     );
     let bytes = mac.finalize().into_bytes();
-    hex_lower(&bytes)
+    Ok(hex_lower(&bytes))
 }
 
 fn review_claim_token_matches(
@@ -710,16 +706,15 @@ fn review_claim_token_matches(
     if claim_token.len() != 64 {
         return false;
     }
-    constant_time_eq(
-        derive_review_claim_token(
-            lease_id,
-            claim_idempotency_key,
-            expires_at,
-            review_claim_secret,
-        )
-        .as_bytes(),
-        claim_token.as_bytes(),
-    )
+    let Ok(expected) = derive_review_claim_token(
+        lease_id,
+        claim_idempotency_key,
+        expires_at,
+        review_claim_secret,
+    ) else {
+        return false;
+    };
+    constant_time_eq(expected.as_bytes(), claim_token.as_bytes())
 }
 
 fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {

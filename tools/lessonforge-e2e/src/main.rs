@@ -138,6 +138,8 @@ fn run() -> Result<String, String> {
         output.push_str(id);
         if matches!(*id, "LEAK-004" | "API-GATE-002") {
             output.push_str(" executed/passed negative_unavailable_verified");
+        } else if matches!(*id, "E2E-001" | "E2E-002") {
+            output.push_str(" executed_smoke");
         } else {
             output.push_str(" listed_in_manifest");
         }

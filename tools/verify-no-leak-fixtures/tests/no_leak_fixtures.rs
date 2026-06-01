@@ -187,6 +187,12 @@ fn unreadable_json_reports_path_and_continues_scanning() -> Result<(), Box<dyn E
 fn unreadable_directory_reports_path_and_continues_scanning() -> Result<(), Box<dyn Error>> {
     use std::os::unix::fs::PermissionsExt as _;
 
+    let uid_output = Command::new("id").arg("-u").output()?;
+    if uid_output.status.success() && String::from_utf8_lossy(&uid_output.stdout).trim() == "0" {
+        eprintln!("skipping unreadable directory check for root user");
+        return Ok(());
+    }
+
     let temp = tempfile::tempdir()?;
     let examples = temp.path().join("examples/mvp");
     fs::create_dir_all(&examples)?;
