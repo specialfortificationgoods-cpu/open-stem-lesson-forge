@@ -54,15 +54,40 @@ fn scan_root(root: &Path) -> Result<Vec<Finding>, String> {
 }
 
 fn scan_path(path: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
-    let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(_) => {
+            findings.push(Finding {
+                path: path.to_path_buf(),
+                reason: "fixture_unreadable",
+            });
+            return Ok(());
+        }
+    };
     if metadata.is_dir() {
-        let mut entries = fs::read_dir(path)
-            .map_err(|error| error.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| error.to_string())?;
-        entries.sort_by_key(|entry| entry.path());
+        let entries = match fs::read_dir(path) {
+            Ok(entries) => entries,
+            Err(_) => {
+                findings.push(Finding {
+                    path: path.to_path_buf(),
+                    reason: "fixture_unreadable",
+                });
+                return Ok(());
+            }
+        };
+        let mut paths = Vec::new();
         for entry in entries {
-            scan_path(&entry.path(), findings)?;
+            match entry {
+                Ok(entry) => paths.push(entry.path()),
+                Err(_) => findings.push(Finding {
+                    path: path.to_path_buf(),
+                    reason: "fixture_unreadable",
+                }),
+            }
+        }
+        paths.sort();
+        for path in paths {
+            scan_path(&path, findings)?;
         }
         return Ok(());
     }
@@ -81,7 +106,16 @@ fn scan_path(path: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
         });
         return Ok(());
     }
-    let content = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    let content = match fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(_) => {
+            findings.push(Finding {
+                path: path.to_path_buf(),
+                reason: "fixture_unreadable",
+            });
+            return Ok(());
+        }
+    };
     let json = match serde_json::from_str::<Value>(&content) {
         Ok(json) => json,
         Err(_) => {

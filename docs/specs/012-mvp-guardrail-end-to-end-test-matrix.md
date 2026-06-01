@@ -15,7 +15,10 @@ Depends on:
 - `docs/specs/009-runner-contract-capability-summary-local-config.md`
 - `docs/specs/010-artifact-manifest-validation-provenance.md`
 - `docs/specs/011-critique-human-review-publication-promotion.md`
-- `docs/specs/013-task-scoped-code-execution-sandbox-provenance.md`
+
+Non-blocking reference:
+
+- `docs/specs/013-task-scoped-code-execution-sandbox-provenance.md` describes sandbox details used by code-execution rows. It is not required to implement or validate this matrix spec.
 
 ## Purpose
 

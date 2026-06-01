@@ -146,6 +146,85 @@ fn invalid_json_reports_path_and_continues_scanning() -> Result<(), Box<dyn Erro
 }
 
 #[test]
+fn unreadable_json_reports_path_and_continues_scanning() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let examples = temp.path().join("examples/mvp");
+    fs::create_dir_all(&examples)?;
+    let unreadable = examples.join("unreadable.valid.json");
+    fs::write(&unreadable, [0xff])?;
+    fs::write(
+        examples.join("unsafe.valid.json"),
+        serde_json::json!({"title": "Bearer abcdef1234567890"}).to_string(),
+    )?;
+
+    let output = Command::new(verifier())
+        .arg("--root")
+        .arg(temp.path())
+        .output()?;
+
+    assert!(
+        !output.status.success(),
+        "expected unreadable and unsafe fixtures to fail"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unreadable.valid.json:fixture_unreadable"),
+        "expected unreadable fixture path in stderr, got {stderr}"
+    );
+    assert!(
+        stderr.contains("unsafe.valid.json:secret_like_value"),
+        "expected scanner to continue after unreadable fixture, got {stderr}"
+    );
+    assert!(
+        !stderr.contains("abcdef1234567890"),
+        "stderr must not echo unsafe values"
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn unreadable_directory_reports_path_and_continues_scanning() -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let temp = tempfile::tempdir()?;
+    let examples = temp.path().join("examples/mvp");
+    fs::create_dir_all(&examples)?;
+    let unreadable = examples.join("aaa-unreadable");
+    fs::create_dir_all(&unreadable)?;
+    fs::set_permissions(&unreadable, fs::Permissions::from_mode(0o000))?;
+    fs::write(
+        examples.join("unsafe.valid.json"),
+        serde_json::json!({"title": "Bearer abcdef1234567890"}).to_string(),
+    )?;
+
+    let output = Command::new(verifier())
+        .arg("--root")
+        .arg(temp.path())
+        .output()?;
+    fs::set_permissions(&unreadable, fs::Permissions::from_mode(0o700))?;
+
+    assert!(
+        !output.status.success(),
+        "expected unreadable directory and unsafe fixture to fail"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("aaa-unreadable:fixture_unreadable"),
+        "expected unreadable directory path in stderr, got {stderr}"
+    );
+    assert!(
+        stderr.contains("unsafe.valid.json:secret_like_value"),
+        "expected scanner to continue after unreadable directory, got {stderr}"
+    );
+    assert!(
+        !stderr.contains("abcdef1234567890"),
+        "stderr must not echo unsafe values"
+    );
+    Ok(())
+}
+
+#[test]
 fn benign_at_symbols_and_plain_words_are_not_secret_or_pii() -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
     let examples = temp.path().join("examples/mvp");

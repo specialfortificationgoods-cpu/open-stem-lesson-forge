@@ -702,14 +702,15 @@ pub fn write_dummy_artifact_bundle(
     if output_root != expected_output_root {
         return Err(RunnerOutputError::UnsafeWorkspacePath);
     }
-    reject_unsafe_path_components(output_root)?;
     let workspace_root = Path::new(&validated.config.runner.workspace_root);
     reject_existing_symlink_workspace_descendants(workspace_root, output_root)?;
 
     fs::create_dir_all(output_root).map_err(|_| RunnerOutputError::OutputUnavailable)?;
     reject_existing_symlink_workspace_descendants(workspace_root, output_root)?;
     for (name, bytes) in dummy_bundle_files(context)? {
-        let path = output_root.join(name);
+        let relative_path = Path::new(name);
+        reject_unsafe_path_components(relative_path)?;
+        let path = output_root.join(relative_path);
         reject_existing_symlink_workspace_descendants(workspace_root, &path)?;
         write_new_file_without_following_symlinks(&path, &bytes)?;
     }
@@ -787,7 +788,8 @@ fn expected_claim_output_root(
     context: &DummyGenerationContext,
 ) -> Result<PathBuf, RunnerOutputError> {
     let workspace_root = Path::new(&validated.config.runner.workspace_root);
-    reject_unsafe_path_components(workspace_root)?;
+    reject_unsafe_local_workspace_path(workspace_root)?;
+    reject_unsafe_workspace_component(&context.lease_id)?;
     let claim_root = workspace_root.join("claims").join(&context.lease_id);
     if context.claim_workspace_root != claim_root {
         return Err(RunnerOutputError::UnsafeWorkspacePath);
@@ -796,9 +798,34 @@ fn expected_claim_output_root(
 }
 
 fn reject_unsafe_path_components(path: &Path) -> Result<(), RunnerOutputError> {
-    if path
-        .components()
-        .any(|component| matches!(component, Component::ParentDir))
+    if path.components().any(|component| {
+        matches!(
+            component,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        )
+    }) {
+        return Err(RunnerOutputError::UnsafeWorkspacePath);
+    }
+    Ok(())
+}
+
+fn reject_unsafe_local_workspace_path(path: &Path) -> Result<(), RunnerOutputError> {
+    if path.as_os_str().is_empty()
+        || path
+            .components()
+            .any(|component| matches!(component, Component::ParentDir))
+        || has_non_absolute_prefix(path)
+    {
+        return Err(RunnerOutputError::UnsafeWorkspacePath);
+    }
+    Ok(())
+}
+
+fn reject_unsafe_workspace_component(value: &str) -> Result<(), RunnerOutputError> {
+    if value.is_empty()
+        || !value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
     {
         return Err(RunnerOutputError::UnsafeWorkspacePath);
     }
@@ -1442,8 +1469,7 @@ fn validate_attestation_config(config: &RunnerConfig) -> Result<(), RunnerConfig
 
     validate_runner_key_id(&config.attestation.runner_key_id)?;
     let key_path = Path::new(&config.attestation.ed25519_private_key_path);
-    reject_unsafe_path_components(key_path)
-        .map_err(|_| RunnerConfigError::InvalidAttestationConfig)?;
+    reject_unsafe_local_config_path(key_path)?;
     let workspace_root = Path::new(&config.runner.workspace_root)
         .canonicalize()
         .map_err(|_| RunnerConfigError::InvalidAttestationConfig)?;
@@ -1459,6 +1485,30 @@ fn validate_attestation_config(config: &RunnerConfig) -> Result<(), RunnerConfig
         return Err(RunnerConfigError::InvalidAttestationConfig);
     }
     Ok(())
+}
+
+fn reject_unsafe_local_config_path(path: &Path) -> Result<(), RunnerConfigError> {
+    if path.as_os_str().is_empty()
+        || path
+            .components()
+            .any(|component| matches!(component, Component::ParentDir))
+        || has_non_absolute_prefix(path)
+    {
+        return Err(RunnerConfigError::InvalidAttestationConfig);
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn has_non_absolute_prefix(path: &Path) -> bool {
+    path.components()
+        .any(|component| matches!(component, Component::Prefix(_)))
+        && !path.is_absolute()
+}
+
+#[cfg(not(windows))]
+fn has_non_absolute_prefix(_path: &Path) -> bool {
+    false
 }
 
 fn validate_runner_key_id(value: &str) -> Result<(), RunnerConfigError> {
@@ -1494,4 +1544,33 @@ fn validate_automated_repair_policy(config: &RunnerConfig) -> Result<(), RunnerC
 
 fn strings(values: impl IntoIterator<Item = &'static str>) -> Vec<String> {
     values.into_iter().map(str::to_owned).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(windows)]
+    use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn local_windows_paths_allow_absolute_and_reject_drive_relative_prefixes() {
+        assert!(reject_unsafe_local_workspace_path(Path::new(r"C:\lessonforge\work")).is_ok());
+        assert!(reject_unsafe_local_workspace_path(Path::new(r"\\server\share\work")).is_ok());
+        assert_eq!(
+            reject_unsafe_local_workspace_path(Path::new(r"C:lessonforge\work")),
+            Err(RunnerOutputError::UnsafeWorkspacePath)
+        );
+        assert!(
+            reject_unsafe_local_config_path(Path::new(r"C:\lessonforge\work\keys\runner.hex"))
+                .is_ok()
+        );
+        assert_eq!(
+            reject_unsafe_local_config_path(Path::new(r"C:lessonforge\work\keys\runner.hex")),
+            Err(RunnerConfigError::InvalidAttestationConfig)
+        );
+        assert_eq!(
+            reject_unsafe_path_components(Path::new(r"C:\lessonforge\work")),
+            Err(RunnerOutputError::UnsafeWorkspacePath)
+        );
+    }
 }
