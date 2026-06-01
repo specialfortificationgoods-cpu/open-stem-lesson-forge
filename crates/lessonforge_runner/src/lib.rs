@@ -16,6 +16,8 @@ use std::io::{Read as _, Write as _};
     target_os = "openbsd"
 ))]
 use std::os::unix::fs::OpenOptionsExt as _;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Component, Path, PathBuf};
 
 use thiserror::Error;
@@ -80,6 +82,7 @@ impl RunnerConfig {
             attestation: AttestationSection {
                 runner_key_id: String::new(),
                 ed25519_private_key_path: String::new(),
+                runner_private_key_dir: String::new(),
             },
             capabilities: CapabilityConfig::for_mode(mode),
             policy: RunnerPolicy {
@@ -142,6 +145,7 @@ pub struct TlsSection {
 pub struct AttestationSection {
     pub runner_key_id: String,
     pub ed25519_private_key_path: String,
+    pub runner_private_key_dir: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1462,6 +1466,7 @@ fn validate_attestation_config(config: &RunnerConfig) -> Result<(), RunnerConfig
     if !requires_attestation {
         if config.attestation.runner_key_id.is_empty()
             && config.attestation.ed25519_private_key_path.is_empty()
+            && config.attestation.runner_private_key_dir.is_empty()
         {
             return Ok(());
         }
@@ -1477,7 +1482,12 @@ fn validate_attestation_config(config: &RunnerConfig) -> Result<(), RunnerConfig
     let canonical_key_path = key_path
         .canonicalize()
         .map_err(|_| RunnerConfigError::InvalidAttestationConfig)?;
-    if !canonical_key_path.starts_with(&workspace_root)
+    let key_in_workspace = canonical_key_path.starts_with(&workspace_root);
+    let key_in_private_dir = validate_runner_private_key_dir(
+        &config.attestation.runner_private_key_dir,
+        &canonical_key_path,
+    )?;
+    if (!key_in_workspace && !key_in_private_dir)
         || read_bounded_ed25519_key_file(key_path)
             .ok()
             .and_then(|bytes| parse_ed25519_seed(&bytes))
@@ -1486,6 +1496,40 @@ fn validate_attestation_config(config: &RunnerConfig) -> Result<(), RunnerConfig
         return Err(RunnerConfigError::InvalidAttestationConfig);
     }
     Ok(())
+}
+
+fn validate_runner_private_key_dir(
+    configured_dir: &str,
+    canonical_key_path: &Path,
+) -> Result<bool, RunnerConfigError> {
+    if configured_dir.is_empty() {
+        return Ok(false);
+    }
+    let dir = Path::new(configured_dir);
+    if !dir.is_absolute() {
+        return Err(RunnerConfigError::InvalidAttestationConfig);
+    }
+    reject_unsafe_local_config_path(dir)?;
+    let dir_file_type = fs::symlink_metadata(dir)
+        .map_err(|_| RunnerConfigError::InvalidAttestationConfig)?
+        .file_type();
+    if dir_file_type.is_symlink() {
+        return Err(RunnerConfigError::InvalidAttestationConfig);
+    }
+    let canonical_dir = dir
+        .canonicalize()
+        .map_err(|_| RunnerConfigError::InvalidAttestationConfig)?;
+    let metadata =
+        fs::metadata(&canonical_dir).map_err(|_| RunnerConfigError::InvalidAttestationConfig)?;
+    if !metadata.is_dir() {
+        return Err(RunnerConfigError::InvalidAttestationConfig);
+    }
+    #[cfg(unix)]
+    if metadata.permissions().mode() & 0o077 != 0 {
+        return Err(RunnerConfigError::InvalidAttestationConfig);
+    }
+    fs::read_dir(&canonical_dir).map_err(|_| RunnerConfigError::InvalidAttestationConfig)?;
+    Ok(canonical_key_path.starts_with(&canonical_dir))
 }
 
 fn reject_unsafe_local_config_path(path: &Path) -> Result<(), RunnerConfigError> {

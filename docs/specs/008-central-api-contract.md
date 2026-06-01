@@ -236,7 +236,6 @@ HTTP status mapping:
 |---|---|
 | 200 | Successful read or idempotent replay returning existing result. |
 | 201 | New resource created. |
-| 202 | Command accepted and deterministic asynchronous follow-up required. |
 | 204 | Successful no-body release/heartbeat where configured. |
 | 400 | Malformed JSON or schema failure. |
 | 401 | Missing or invalid authentication. |
@@ -249,6 +248,10 @@ HTTP status mapping:
 | 422 | Deterministic policy validation failure. |
 | 429 | Deterministic quota/abuse limit. |
 | 500 | Redacted internal error. |
+
+MVP endpoints in this spec do not return `202`. A later reviewed spec may add
+`202 Accepted` only by naming the exact endpoint, deterministic acceptance
+condition, response body, replay behavior, and required client follow-up action.
 
 ## Pagination and Filtering
 
@@ -1011,6 +1014,11 @@ Validation work and human-review work cannot be submitted through this endpoint.
 ## Code Critique and Repair Work Endpoints
 
 Spec `014` extends generic runner work packets with `critique_generated_code` and `repair_generated_code`.
+These central API ingestion endpoints are deferred for the spec `012` MVP gate
+and must not be exposed by the first Rust MVP implementation. Until a later
+release explicitly activates spec `014` API surfaces, the MVP E2E gate proves
+their absence with negative-unavailable checks. The endpoint contracts below are
+the required contract for that later activation, not enabled MVP behavior.
 
 Claim, heartbeat, and release:
 
@@ -1505,8 +1513,8 @@ Endpoint request allowlists:
 | Proposal submit | lease credentials plus `ProposedTaskGraph` schema from spec `007` |
 | Verification submit | lease credentials plus `PlanVerification` schema |
 | Promotion | safe reason enum only |
-| Work output submit | lease credentials plus closed output metadata schema, digest metadata, required spec `013` self-test report evidence for `sandboxed_self_test_python_checker` generation work, and spec `014` code critique/repair/interruption reports for their task types |
-| Repair interruption decision | `Idempotency-Key` header plus closed spec `014` continuation decision body; actor and scope derive from auth |
+| Work output submit | lease credentials plus closed output metadata schema, digest metadata, and required spec `013` self-test report evidence for `sandboxed_self_test_python_checker` generation work; spec `014` code critique/repair/interruption report fields are deferred until explicit spec `014` API activation |
+| Repair interruption decision | deferred until explicit spec `014` API activation; then `Idempotency-Key` header plus closed spec `014` continuation decision body, with actor and scope derived from auth |
 | Validation work claim/heartbeat/release | system-validator actor context, validation work packet ID, lease ID/token for heartbeat/release |
 | Validation report | validation lease credentials from dedicated validation-work claim, validator run ID, plus validation report schema |
 | Review submit | lease credentials plus review schema |

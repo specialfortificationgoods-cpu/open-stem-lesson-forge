@@ -212,7 +212,7 @@ fn validate_manifest(manifest: &Manifest) -> Result<BTreeMap<String, ManifestRow
     }
     let mut rows = BTreeMap::new();
     for row in &manifest.rows {
-        if row.command.is_empty() {
+        if row.command.trim().is_empty() {
             return Err("manifest_row_command_missing".to_owned());
         }
         if rows.insert(row.id.clone(), row.clone()).is_some() {
@@ -535,5 +535,23 @@ mod tests {
         assert!(!error.contains("/private/tmp"));
         assert!(!error.contains("No such file"));
         Ok(())
+    }
+
+    #[test]
+    fn manifest_rejects_whitespace_only_commands() {
+        let manifest = Manifest {
+            spec: "012".to_owned(),
+            suite: "mvp".to_owned(),
+            rows: vec![ManifestRow {
+                id: "E2E-001".to_owned(),
+                status: "automated".to_owned(),
+                command: " \t\n".to_owned(),
+            }],
+        };
+
+        assert_eq!(
+            validate_manifest(&manifest).err().as_deref(),
+            Some("manifest_row_command_missing")
+        );
     }
 }

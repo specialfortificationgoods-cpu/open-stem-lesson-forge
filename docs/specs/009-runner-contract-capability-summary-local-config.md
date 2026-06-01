@@ -89,6 +89,7 @@ expected_server_name = ""
 [attestation]
 runner_key_id = ""
 ed25519_private_key_path = ""
+runner_private_key_dir = ""
 
 [capabilities]
 subjects = ["physics"]
@@ -128,7 +129,7 @@ Forbidden config fields:
 - cookie path;
 - Codex auth path;
 - exact quota/account values;
-- local filesystem paths outside `workspace_root`;
+- local filesystem paths outside `workspace_root`, except `runner_private_key_dir` and an `ed25519_private_key_path` under its canonical directory as constrained by the attestation rules below;
 - shell command templates;
 - tool/function-call execution templates;
 - hidden network destinations.
@@ -151,9 +152,11 @@ Attestation config rules:
 
 - `runner_key_id` is the central-registered key ID used in spec `013` self-test attestations.
 - `ed25519_private_key_path` is local private config and must not appear in capability summaries, central API payloads except by signature result, logs, or errors.
-- Both fields are required for runner modes that submit signed provenance, including `dummy_generator`.
-- Both fields must be empty for runner modes that do not submit signed provenance.
-- The private key file must be under `workspace_root` or an explicitly configured runner-private key directory.
+- `runner_private_key_dir` is optional local private config for storing runner private keys outside `workspace_root`.
+- `runner_key_id` and `ed25519_private_key_path` are required for runner modes that submit signed provenance, including `dummy_generator`.
+- `runner_key_id`, `ed25519_private_key_path`, and `runner_private_key_dir` must be empty for runner modes that do not submit signed provenance.
+- When `runner_private_key_dir` is present, it must be an absolute non-symlink directory path that exists, is readable by the runner process, and is not readable by other local users under platforms that expose owner/group/other mode bits.
+- The private key file must be under `workspace_root` or under the configured `runner_private_key_dir`; if `ed25519_private_key_path` is outside `workspace_root`, the runner must reject the config unless the canonical key path is under the canonical `runner_private_key_dir`.
 - The central API receives only `runner_key_id`, digest fields, and the Ed25519 signature described in spec `013`.
 
 Automated repair config rules from spec `014`:

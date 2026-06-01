@@ -204,11 +204,13 @@ fn unreadable_directory_reports_path_and_continues_scanning() -> Result<(), Box<
         serde_json::json!({"title": "Bearer abcdef1234567890"}).to_string(),
     )?;
 
-    let output = Command::new(verifier())
+    let output_result = Command::new(verifier())
         .arg("--root")
         .arg(temp.path())
-        .output()?;
-    fs::set_permissions(&unreadable, fs::Permissions::from_mode(0o700))?;
+        .output();
+    let restore_result = fs::set_permissions(&unreadable, fs::Permissions::from_mode(0o700));
+    let output = output_result?;
+    restore_result?;
 
     assert!(
         !output.status.success(),

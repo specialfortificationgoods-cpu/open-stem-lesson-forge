@@ -251,6 +251,39 @@ fn dummy_generator_requires_valid_attestation_config() -> Result<(), Box<dyn Err
     uppercase_key.attestation.ed25519_private_key_path = uppercase_key_path.display().to_string();
     validate_runner_config(&uppercase_key)?;
 
+    let private_key_dir = tempfile::tempdir()?;
+    #[cfg(unix)]
+    std::fs::set_permissions(
+        private_key_dir.path(),
+        std::os::unix::fs::PermissionsExt::from_mode(0o700),
+    )?;
+    let private_key_path = private_key_dir.path().join("runner.hex");
+    std::fs::write(&private_key_path, hex_seed(&[11; 32]))?;
+    let mut private_dir_key = dummy_config_with_workspace(
+        "actor_generator_001",
+        "Dummy Generator",
+        RunnerMode::DummyGenerator,
+        temp.path(),
+    );
+    private_dir_key.attestation.runner_key_id = "rkey_dummy_generator_001".to_owned();
+    private_dir_key.attestation.ed25519_private_key_path = private_key_path.display().to_string();
+    private_dir_key.attestation.runner_private_key_dir =
+        private_key_dir.path().display().to_string();
+    validate_runner_config(&private_dir_key)?;
+
+    let other_private_key_dir = tempfile::tempdir()?;
+    #[cfg(unix)]
+    std::fs::set_permissions(
+        other_private_key_dir.path(),
+        std::os::unix::fs::PermissionsExt::from_mode(0o700),
+    )?;
+    private_dir_key.attestation.runner_private_key_dir =
+        other_private_key_dir.path().display().to_string();
+    assert_eq!(
+        config_error_code(&private_dir_key),
+        "invalid_attestation_config"
+    );
+
     #[cfg(unix)]
     {
         let outside = tempfile::tempdir()?;
@@ -272,6 +305,15 @@ fn dummy_generator_requires_valid_attestation_config() -> Result<(), Box<dyn Err
         symlink_key.attestation.ed25519_private_key_path = symlink_key_path.display().to_string();
         assert_eq!(
             config_error_code(&symlink_key),
+            "invalid_attestation_config"
+        );
+
+        let symlink_private_dir = temp.path().join("symlink-private-key-dir");
+        std::os::unix::fs::symlink(private_key_dir.path(), &symlink_private_dir)?;
+        private_dir_key.attestation.runner_private_key_dir =
+            symlink_private_dir.display().to_string();
+        assert_eq!(
+            config_error_code(&private_dir_key),
             "invalid_attestation_config"
         );
 
@@ -300,6 +342,7 @@ fn dummy_generator_requires_valid_attestation_config() -> Result<(), Box<dyn Err
         .join("runner.hex")
         .display()
         .to_string();
+    planner_with_key.attestation.runner_private_key_dir = temp.path().display().to_string();
     assert_eq!(
         config_error_code(&planner_with_key),
         "invalid_attestation_config"

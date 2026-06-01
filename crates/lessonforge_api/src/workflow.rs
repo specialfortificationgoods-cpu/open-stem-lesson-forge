@@ -738,11 +738,13 @@ fn hex_lower(bytes: &[u8]) -> String {
 }
 
 fn validate_idempotency_key(value: &str) -> Result<(), ReviewPolicyError> {
+    if !(8..=128).contains(&value.len()) {
+        return Err(ReviewPolicyError::ReviewSubmissionLineageMismatch);
+    }
     let lower = value.to_ascii_lowercase();
-    let valid = (8..=128).contains(&value.len())
-        && value
-            .chars()
-            .all(|character| character.is_ascii_graphic() && !character.is_ascii_whitespace())
+    let valid = value
+        .chars()
+        .all(|character| character.is_ascii_graphic() && !character.is_ascii_whitespace())
         && !lower.contains("http://")
         && !lower.contains("https://")
         && !lower.contains("sk-")
