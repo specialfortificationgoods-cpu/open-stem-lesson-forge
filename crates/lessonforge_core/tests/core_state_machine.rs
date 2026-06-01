@@ -508,6 +508,7 @@ fn lease_submission_consumes_once_and_replay_requires_same_key_and_payload()
         consumed
             .apply(LeaseAction::Release(LeaseMutationCommand {
                 actor_id,
+                actor_type: ActorType::Runner,
                 claim_token: "claim-token-secret".to_owned(),
                 now: 160,
                 idempotency_key: "idem_release".to_owned(),
@@ -540,6 +541,7 @@ fn lease_slots_heartbeat_and_release_replay_are_token_bound() -> Result<(), Box<
     assert_eq!(lease.lease_slot(), Some(0));
     let heartbeat = LeaseMutationCommand {
         actor_id: actor_id.clone(),
+        actor_type: ActorType::Runner,
         claim_token: "claim-token-secret".to_owned(),
         now: 120,
         idempotency_key: "idem_heartbeat".to_owned(),
@@ -574,6 +576,7 @@ fn lease_slots_heartbeat_and_release_replay_are_token_bound() -> Result<(), Box<
 
     let release = LeaseMutationCommand {
         actor_id,
+        actor_type: ActorType::Runner,
         claim_token: "claim-token-secret".to_owned(),
         now: 130,
         idempotency_key: "idem_release".to_owned(),
@@ -608,6 +611,7 @@ fn lease_slots_heartbeat_and_release_replay_are_token_bound() -> Result<(), Box<
     );
     let revoked = revoke_lease.apply(LeaseAction::Revoke(LeaseMutationCommand {
         actor_id: ActorId::try_from("actor_runner_2")?,
+        actor_type: ActorType::Runner,
         claim_token: "claim-token-two".to_owned(),
         now: 140,
         idempotency_key: "idem_revoke".to_owned(),
@@ -616,5 +620,46 @@ fn lease_slots_heartbeat_and_release_replay_are_token_bound() -> Result<(), Box<
         result_id: "revoke_result".to_owned(),
     }))?;
     assert_eq!(revoked.state(), LeaseState::Revoked);
+
+    let override_lease = Lease::active_with_slot(
+        LeaseId::try_from("lease_planning_slot_2")?,
+        LeaseEntityType::PlanningTask,
+        entity_id.to_string(),
+        ActorId::try_from("actor_runner_3")?,
+        Some(2),
+        Lease::claim_token_hash("claim-token-three"),
+        100,
+        200,
+    );
+    let system_revoked =
+        override_lease
+            .clone()
+            .apply(LeaseAction::Revoke(LeaseMutationCommand {
+                actor_id: ActorId::try_from("actor_system_core")?,
+                actor_type: ActorType::SystemCore,
+                claim_token: String::new(),
+                now: 140,
+                idempotency_key: "idem_system_revoke".to_owned(),
+                payload_digest:
+                    "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+                        .to_owned(),
+                result_id: "system_revoke_result".to_owned(),
+            }))?;
+    assert_eq!(system_revoked.state(), LeaseState::Revoked);
+    assert!(
+        override_lease
+            .apply(LeaseAction::Revoke(LeaseMutationCommand {
+                actor_id: ActorId::try_from("actor_other_runner")?,
+                actor_type: ActorType::Runner,
+                claim_token: String::new(),
+                now: 140,
+                idempotency_key: "idem_runner_revoke".to_owned(),
+                payload_digest:
+                    "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+                        .to_owned(),
+                result_id: "runner_revoke_result".to_owned(),
+            }))
+            .is_err()
+    );
     Ok(())
 }

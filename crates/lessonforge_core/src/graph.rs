@@ -257,7 +257,7 @@ pub struct PromotionContext {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PromotionIds {
     pub promotion_decision_id: PromotionDecisionId,
-    pub work_packet_ids: Vec<WorkPacketId>,
+    pub work_packet_ids_by_local_task_id: BTreeMap<String, WorkPacketId>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -1265,9 +1265,7 @@ fn validate_generation_task(task: &ProposedTaskInput, errors: &mut Vec<GraphPoli
         errors,
     );
     require(
-        task.execution_policy
-            .as_deref()
-            .is_none_or(|value| value == "code_generation_only"),
+        task.execution_policy.as_deref() == Some("code_generation_only"),
         "invalid_generation_execution_policy",
         "/proposed_tasks/execution_policy",
         errors,
@@ -1476,14 +1474,31 @@ fn validate_promotion_preconditions(
             "/proposal/tasks",
         ));
     }
-    if ids.work_packet_ids.len() != proposal.tasks.len() {
+    if ids.work_packet_ids_by_local_task_id.len() != proposal.tasks.len() {
         return Err(GraphPolicyError::new(
             "incorrect_work_packet_id_count",
             "/promotion/work_packet_ids",
         ));
     }
-    let unique_work_packet_ids: BTreeSet<&WorkPacketId> = ids.work_packet_ids.iter().collect();
-    if unique_work_packet_ids.len() != ids.work_packet_ids.len() {
+    let expected_local_ids: BTreeSet<&str> = proposal
+        .tasks
+        .iter()
+        .map(|task| task.local_id.as_str())
+        .collect();
+    let actual_local_ids: BTreeSet<&str> = ids
+        .work_packet_ids_by_local_task_id
+        .keys()
+        .map(String::as_str)
+        .collect();
+    if actual_local_ids != expected_local_ids {
+        return Err(GraphPolicyError::new(
+            "work_packet_id_local_task_mismatch",
+            "/promotion/work_packet_ids",
+        ));
+    }
+    let unique_work_packet_ids: BTreeSet<&WorkPacketId> =
+        ids.work_packet_ids_by_local_task_id.values().collect();
+    if unique_work_packet_ids.len() != ids.work_packet_ids_by_local_task_id.len() {
         return Err(GraphPolicyError::new(
             "duplicate_work_packet_id",
             "/promotion/work_packet_ids",
@@ -1518,10 +1533,7 @@ fn normalized_tasks_match_mvp(tasks: &[NormalizedTaskRecord]) -> bool {
         && exact_str_set(&generation.outputs, GENERATION_OUTPUTS)
         && exact_str_set(&generation.validation_required, VALIDATION_CHECKS)
         && exact_str_set(&generation.human_review_required_for, &[PEER_REVIEWED])
-        && generation
-            .execution_policy
-            .as_deref()
-            .is_none_or(|value| value == "code_generation_only")
+        && generation.execution_policy.as_deref() == Some("code_generation_only")
         && validation.phase == "mechanical_validation"
         && validation.depends_on == [generation.local_id.as_str()]
         && exact_str_set(
@@ -1554,24 +1566,26 @@ fn materialize_work_packets(
     proposal: &ProposedTaskGraphRecord,
     ids: &PromotionIds,
 ) -> Result<Vec<WorkPacketRecord>, GraphPolicyError> {
-    let id_by_local: BTreeMap<&str, WorkPacketId> = proposal
-        .tasks
-        .iter()
-        .zip(ids.work_packet_ids.iter())
-        .map(|(task, id)| (task.local_id.as_str(), id.clone()))
-        .collect();
-
     proposal
         .tasks
         .iter()
-        .zip(ids.work_packet_ids.iter())
-        .map(|(task, work_packet_id)| {
+        .map(|task| {
+            let work_packet_id = ids
+                .work_packet_ids_by_local_task_id
+                .get(&task.local_id)
+                .cloned()
+                .ok_or_else(|| {
+                    GraphPolicyError::new(
+                        "promotion_task_id_rewrite_failed",
+                        "/promotion/work_packets/source_local_task_id",
+                    )
+                })?;
             let depends_on_work_packet_ids = task
                 .depends_on
                 .iter()
                 .map(|dependency| {
-                    id_by_local
-                        .get(dependency.as_str())
+                    ids.work_packet_ids_by_local_task_id
+                        .get(dependency)
                         .cloned()
                         .ok_or_else(|| {
                             GraphPolicyError::new(
@@ -1582,7 +1596,7 @@ fn materialize_work_packets(
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(WorkPacketRecord {
-                work_packet_id: work_packet_id.clone(),
+                work_packet_id,
                 proposal_id: proposal.proposal_id.clone(),
                 source_local_task_id: task.local_id.clone(),
                 state: if depends_on_work_packet_ids.is_empty() {

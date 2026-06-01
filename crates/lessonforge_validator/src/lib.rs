@@ -915,7 +915,27 @@ fn validate_python3_interpreter(path: Option<&Path>) -> Option<PathBuf> {
 }
 
 fn valid_python3_interpreter_path(path: &Path) -> bool {
-    path.is_absolute() && path.is_file()
+    if !path.is_absolute() || !path.is_file() {
+        return false;
+    }
+    let mut command = limited_python_command(path);
+    let Ok(child) = command
+        .arg("-I")
+        .arg("-B")
+        .arg("-c")
+        .arg("import sys; sys.stdout.write(str(sys.version_info[0]))")
+        .env_clear()
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    let Some(output) = wait_for_child_output_with_timeout(child, Duration::from_secs(1)) else {
+        return false;
+    };
+    output.status.success() && output.stdout == b"3"
 }
 
 fn manifest_schema_values_are_valid(manifest: &ArtifactManifest) -> bool {

@@ -147,7 +147,7 @@ Each `proposed_tasks` item contains:
 - `outputs`
 - `validation_required`
 - `human_review_required_for`
-- `execution_policy` optional.
+- `execution_policy` required for `generate_lesson_pack` and absent for non-generation tasks.
 
 Unknown task fields are rejected.
 
@@ -157,7 +157,7 @@ Runner proposals may include `execution_policy` only as an advisory request. The
 
 MVP accepted proposal value:
 
-- `execution_policy=code_generation_only` or absent for `generate_lesson_pack`.
+- `execution_policy=code_generation_only` for `generate_lesson_pack`.
 
 Rejected proposal values:
 

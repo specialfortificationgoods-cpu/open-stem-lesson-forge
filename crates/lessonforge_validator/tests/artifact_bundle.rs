@@ -273,6 +273,28 @@ fn sandboxed_subprocess_rejects_relative_python_interpreter_path() -> Result<(),
 }
 
 #[test]
+fn sandboxed_subprocess_rejects_absolute_non_python3_interpreter_path() -> Result<(), Box<dyn Error>>
+{
+    let temp = tempfile::tempdir()?;
+    write_valid_bundle(temp.path())?;
+    let fake_interpreter = temp.path().join("not-python3");
+    fs::write(&fake_interpreter, "not an executable Python interpreter")?;
+    let mut context = context(CheckerExecutionMode::StaticOnly);
+    context.execution_mode = CheckerExecutionMode::SandboxedSubprocess;
+    context.python_interpreter_path = Some(fake_interpreter);
+
+    let report = validate_bundle(temp.path(), &context)?;
+
+    assert_eq!(report.status, ValidationReportStatus::Failed);
+    assert!(
+        report
+            .failure_codes()
+            .contains(&"python_checker_runs_failed")
+    );
+    Ok(())
+}
+
+#[test]
 fn context_bound_manifest_ids_are_not_hard_coded_to_fixture_ids() -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
     write_valid_bundle(temp.path())?;

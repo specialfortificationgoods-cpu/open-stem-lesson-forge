@@ -829,10 +829,20 @@ fn write_new_file_without_following_symlinks(
     path: &Path,
     bytes: &[u8],
 ) -> Result<(), RunnerOutputError> {
-    // Supported Unix targets use O_NOFOLLOW at open time; other targets rely
-    // on reject_existing_symlink_workspace_descendants to reduce TOCTOU risk.
-    let mut options = OpenOptions::new();
-    options.write(true).create_new(true);
+    #[cfg(not(any(
+        target_os = "macos",
+        target_os = "linux",
+        target_os = "ios",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    )))]
+    {
+        let _ = path;
+        let _ = bytes;
+        Err(RunnerOutputError::OutputUnavailable)
+    }
+
     #[cfg(any(
         target_os = "macos",
         target_os = "linux",
@@ -842,13 +852,17 @@ fn write_new_file_without_following_symlinks(
         target_os = "openbsd"
     ))]
     {
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        // Enforce the no-symlink property at open time. Platforms without an
+        // equivalent fail closed above instead of relying on pre-open checks.
         options.custom_flags(libc::O_NOFOLLOW);
+        let mut file = options
+            .open(path)
+            .map_err(|_| RunnerOutputError::OutputUnavailable)?;
+        file.write_all(bytes)
+            .map_err(|_| RunnerOutputError::OutputUnavailable)
     }
-    let mut file = options
-        .open(path)
-        .map_err(|_| RunnerOutputError::OutputUnavailable)?;
-    file.write_all(bytes)
-        .map_err(|_| RunnerOutputError::OutputUnavailable)
 }
 
 fn expected_claim_output_root(
@@ -1469,8 +1483,9 @@ fn validate_pin_path(path: &str) -> Result<(), RunnerConfigError> {
     }) {
         return Err(RunnerConfigError::UnsafeCentralApiOrigin);
     }
-    let metadata = fs::metadata(path).map_err(|_| RunnerConfigError::UnsafeCentralApiOrigin)?;
-    if !metadata.is_file() || fs::File::open(path).is_err() {
+    let metadata =
+        fs::symlink_metadata(path).map_err(|_| RunnerConfigError::UnsafeCentralApiOrigin)?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() || fs::File::open(path).is_err() {
         return Err(RunnerConfigError::UnsafeCentralApiOrigin);
     }
     Ok(())

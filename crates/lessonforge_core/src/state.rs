@@ -749,6 +749,7 @@ pub struct LeaseSubmission {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LeaseMutationCommand {
     pub actor_id: ActorId,
+    pub actor_type: ActorType,
     pub claim_token: String,
     pub now: u64,
     pub idempotency_key: String,
@@ -970,8 +971,10 @@ impl Lease {
     }
 
     fn apply_revoke(mut self, command: LeaseMutationCommand) -> Result<Self, LeaseError> {
-        self.require_actor(&command.actor_id)?;
-        self.require_token(&command.claim_token)?;
+        if !command.actor_type.can_override_lease_revoke() {
+            self.require_actor(&command.actor_id)?;
+            self.require_token(&command.claim_token)?;
+        }
         Self::require_command_record(&command)?;
         if self.is_replayed_mutation(&command)? {
             return Ok(self);
@@ -1054,5 +1057,14 @@ impl Lease {
             return Err(LeaseError::MissingSubmissionRecord);
         }
         Ok(())
+    }
+}
+
+impl ActorType {
+    fn can_override_lease_revoke(self) -> bool {
+        matches!(
+            self,
+            ActorType::Curator | ActorType::Admin | ActorType::SystemCore
+        )
     }
 }

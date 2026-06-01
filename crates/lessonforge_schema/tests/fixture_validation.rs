@@ -873,6 +873,40 @@ fn fixture_set_rejects_schema_and_example_drift() -> Result<(), Box<dyn Error>> 
     Ok(())
 }
 
+#[test]
+fn unique_items_rejects_duplicate_objects_independent_of_key_order() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    copy_tree(
+        &workspace_root().join("schemas"),
+        &temp.path().join("schemas"),
+    )?;
+    copy_tree(
+        &workspace_root().join("examples").join("mvp"),
+        &temp.path().join("examples").join("mvp"),
+    )?;
+    let graph_path = temp
+        .path()
+        .join("examples")
+        .join("mvp")
+        .join("proposed_task_graph.valid.json");
+    let mut graph: Value = serde_json::from_str(&fs::read_to_string(&graph_path)?)?;
+    graph["proposed_artifacts"] = json!([
+        {"artifact_type": "worksheet", "priority": "required"},
+        {"priority": "required", "artifact_type": "worksheet"},
+        {"artifact_type": "answer_key", "priority": "required"},
+        {"artifact_type": "python_checker", "priority": "required"},
+        {"artifact_type": "teacher_notes", "priority": "required"}
+    ]);
+    fs::write(graph_path, serde_json::to_string_pretty(&graph)?)?;
+
+    let error = match verify_fixture_set(temp.path()) {
+        Ok(_) => return Err("duplicate object items should reject".into()),
+        Err(error) => error,
+    };
+    assert_eq!(error.code, "fixture_schema_validation_failed");
+    Ok(())
+}
+
 fn fixture_error_after_schema_mutation<F>(
     schema_file: &str,
     mutate: F,

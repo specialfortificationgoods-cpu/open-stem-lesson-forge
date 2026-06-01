@@ -137,6 +137,16 @@ fn non_loopback_https_origins_require_complete_pinned_transport() -> Result<(), 
         "unsafe_central_api_origin"
     );
 
+    #[cfg(unix)]
+    {
+        let symlink_path = ca_dir.path().join("symlink-ca.pem");
+        std::os::unix::fs::symlink(&ca_path, &symlink_path)?;
+        let mut symlink_pin = wrong_name.clone();
+        symlink_pin.transport.tls.pinned_ca_pem_path = symlink_path.display().to_string();
+        symlink_pin.transport.tls.expected_server_name = "lessonforge.example".to_owned();
+        assert_eq!(config_error_code(&symlink_pin), "unsafe_central_api_origin");
+    }
+
     let mut pinned_ca = empty_pin;
     pinned_ca.transport.tls.pinned_ca_pem_path = ca_path.display().to_string();
     pinned_ca.transport.tls.expected_server_name = "lessonforge.example".to_owned();

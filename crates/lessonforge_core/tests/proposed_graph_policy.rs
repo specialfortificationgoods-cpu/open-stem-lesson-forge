@@ -9,6 +9,7 @@ use lessonforge_core::ids::{
 };
 use lessonforge_core::state::{PlanVerificationTaskState, ProposedTaskGraphState, WorkPacketState};
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::error::Error;
 
 #[test]
@@ -473,11 +474,11 @@ fn verified_low_risk_graph_promotes_transactionally_and_replay_is_idempotent()
         },
         PromotionIds {
             promotion_decision_id: PromotionDecisionId::try_from("promo_other")?,
-            work_packet_ids: vec![
-                WorkPacketId::try_from("wp_energy_001_generate_pack_2")?,
-                WorkPacketId::try_from("wp_energy_001_validate_pack_2")?,
-                WorkPacketId::try_from("wp_energy_001_human_review_2")?,
-            ],
+            work_packet_ids_by_local_task_id: work_packet_id_map(&[
+                ("generate_pack", "wp_energy_001_generate_pack_2"),
+                ("validate_bundle", "wp_energy_001_validate_pack_2"),
+                ("human_review", "wp_energy_001_human_review_2"),
+            ])?,
         },
         "idem_promote_other",
         "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -578,6 +579,19 @@ fn non_low_risk_and_high_risk_task_types_are_rejected_without_verification()
     );
     assert_eq!(policy_outcome.proposal.central_risk_level(), "medium");
     assert!(policy_outcome.plan_verification_task.is_none());
+
+    let mut missing_execution_policy = valid_graph();
+    missing_execution_policy["proposed_tasks"][0]
+        .as_object_mut()
+        .ok_or("generation task should be an object")?
+        .remove("execution_policy");
+    let missing_policy_outcome =
+        validate_proposed_task_graph(missing_execution_policy, graph_context()?)?;
+    assert_eq!(
+        missing_policy_outcome.proposal.state(),
+        ProposedTaskGraphState::PolicyRejected
+    );
+    assert!(missing_policy_outcome.plan_verification_task.is_none());
     Ok(())
 }
 
@@ -641,11 +655,11 @@ fn promotion_rejects_duplicate_work_packet_ids_before_ledger_mutation() -> Resul
     let mut ledger = PromotionLedger::default();
     let duplicate_ids = PromotionIds {
         promotion_decision_id: PromotionDecisionId::try_from("promo_energy_001")?,
-        work_packet_ids: vec![
-            WorkPacketId::try_from("wp_energy_001_generate_pack")?,
-            WorkPacketId::try_from("wp_energy_001_generate_pack")?,
-            WorkPacketId::try_from("wp_energy_001_human_review")?,
-        ],
+        work_packet_ids_by_local_task_id: work_packet_id_map(&[
+            ("generate_pack", "wp_energy_001_generate_pack"),
+            ("validate_bundle", "wp_energy_001_generate_pack"),
+            ("human_review", "wp_energy_001_human_review"),
+        ])?,
     };
 
     assert!(
@@ -690,12 +704,26 @@ fn graph_context() -> Result<GraphValidationContext, Box<dyn Error>> {
 fn promotion_ids() -> Result<PromotionIds, Box<dyn Error>> {
     Ok(PromotionIds {
         promotion_decision_id: PromotionDecisionId::try_from("promo_energy_001")?,
-        work_packet_ids: vec![
-            WorkPacketId::try_from("wp_energy_001_generate_pack")?,
-            WorkPacketId::try_from("wp_energy_001_validate_pack")?,
-            WorkPacketId::try_from("wp_energy_001_human_review")?,
-        ],
+        work_packet_ids_by_local_task_id: work_packet_id_map(&[
+            ("generate_pack", "wp_energy_001_generate_pack"),
+            ("validate_bundle", "wp_energy_001_validate_pack"),
+            ("human_review", "wp_energy_001_human_review"),
+        ])?,
     })
+}
+
+fn work_packet_id_map(
+    pairs: &[(&str, &str)],
+) -> Result<BTreeMap<String, WorkPacketId>, Box<dyn Error>> {
+    pairs
+        .iter()
+        .map(|(local_task_id, work_packet_id)| {
+            Ok((
+                (*local_task_id).to_owned(),
+                WorkPacketId::try_from(*work_packet_id)?,
+            ))
+        })
+        .collect()
 }
 
 fn valid_graph() -> Value {
@@ -742,6 +770,7 @@ fn valid_graph() -> Value {
                 "age_range": "14-16",
                 "language": "en",
                 "risk_level": "low",
+                "execution_policy": "code_generation_only",
                 "required_capabilities": ["stem_pedagogy", "structured_markdown", "basic_python"],
                 "outputs": ["worksheet.md", "answer_key.md", "checker.py", "teacher_notes.md", "manifest.json"],
                 "validation_required": [

@@ -1256,18 +1256,16 @@ fn validate_schema_array(
         )?;
     }
     if schema.get("uniqueItems").and_then(Value::as_bool) == Some(true) {
-        let mut seen = BTreeSet::new();
+        let mut seen: Vec<&Value> = Vec::new();
         for item in items {
-            let encoded = serde_json::to_string(item).map_err(|_| {
-                SchemaError::new(schema_name, "fixture_schema_validation_failed", field_path)
-            })?;
-            if !seen.insert(encoded) {
+            if seen.contains(&item) {
                 return Err(SchemaError::new(
                     schema_name,
                     "fixture_schema_validation_failed",
                     field_path,
                 ));
             }
+            seen.push(item);
         }
     }
     let mut items_start_index = 0usize;

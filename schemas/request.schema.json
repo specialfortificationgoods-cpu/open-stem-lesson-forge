@@ -20,7 +20,11 @@
     "title": { "type": "string", "minLength": 1, "maxLength": 120 },
     "subject": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{1,63}$" },
     "topic": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{1,63}$" },
-    "age_range": { "type": "string", "pattern": "^[0-9]{1,2}-[0-9]{1,2}$" },
+    "age_range": {
+      "type": "string",
+      "pattern": "^[0-9]{1,2}-[0-9]{1,2}$",
+      "description": "Inclusive lower-exclusive upper age band. The deterministic request validator additionally enforces positive bounds, low < high, and MVP-supported bounds."
+    },
     "language": { "const": "en" },
     "lesson_duration_minutes": { "type": "integer", "minimum": 15, "maximum": 180 },
     "desired_artifacts": {

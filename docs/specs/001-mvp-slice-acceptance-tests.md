@@ -207,9 +207,9 @@ After request moderation passes, the central core creates this mechanical planni
   "minimum_runner_trust_level": "planner_candidate",
   "claim_policy": {
     "lease_minutes": 60,
-    "max_parallel_claims": 2,
+    "max_active_claims": 2,
     "allow_duplicate_claims": true,
-    "duplicate_claim_target": 1
+    "min_accepted_proposals": 1
   },
   "status": "open"
 }
@@ -369,9 +369,9 @@ After the proposed task graph passes schema and policy validation, the determini
   "minimum_runner_trust_level": "verifier_candidate",
   "claim_policy": {
     "lease_minutes": 45,
-    "max_parallel_claims": 1,
+    "max_active_claims": 1,
     "allow_duplicate_claims": false,
-    "duplicate_claim_target": 1
+    "min_accepted_proposals": 1
   },
   "status": "open"
 }
