@@ -142,10 +142,17 @@ Capability answers what an actor claims or is configured to do:
 - `request_interpretation`
 - `content_moderation`
 - `age_appropriateness_classification`
+- `structured_json_output`
 - `task_decomposition`
+- `policy_reasoning`
+- `policy_cross_check`
+- `stem_pedagogy`
+- `structured_markdown`
+- `basic_python`
 - `plan_consistency_review`
 - `artifact_generation`
 - `artifact_validation`
+- `python_execution_limited`
 - `human_subject_review`
 - `human_pedagogy_review`
 
@@ -221,9 +228,11 @@ Allowed transitions:
 | `decomposed` | `artifact_drafted` | system_core | Selected MVP artifact bundle draft accepted. |
 | `artifact_drafted` | `machine_validated` | system_core | Selected MVP artifact bundle passed trusted deterministic validation. |
 | `machine_validated` | `peer_reviewed` | system_core | Selected MVP artifact bundle passed required human approval gates. |
-| any non-terminal including `planning_failed` | `deprecated` | curator or admin | Safe reason code provided. |
+| any non-terminal or `planning_failed` | `deprecated` | curator or admin | Explicit administrative remediation or supersession with safe reason code. |
 
 Request state is an aggregate summary. It does not replace proposal, work packet, artifact, or review state.
+
+`planning_failed` is terminal for the normal request-to-task workflow: no later planning claim, proposal submission, promotion, work-packet materialization, or artifact submission may continue from it. The only permitted transition out is the explicit curator/admin administrative transition to `deprecated`, which records that the failed request was superseded or closed after human remediation.
 
 For the MVP, a request has one selected promoted proposal and one selected artifact bundle containing the worksheet, answer key, Python checker, and teacher notes. `artifact_drafted`, `machine_validated`, and `peer_reviewed` mean that selected bundle reached the corresponding artifact state. After the MVP, aggregate request states must be defined as deterministic reductions over all required artifacts and review gates before they can be generalized.
 

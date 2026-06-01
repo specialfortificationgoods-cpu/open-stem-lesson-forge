@@ -34,6 +34,30 @@ fn real_workspace_fixtures_are_safe_to_publish() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn uppercase_json_extension_is_scanned_as_json() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let examples = temp.path().join("examples/mvp");
+    fs::create_dir_all(&examples)?;
+    fs::write(
+        examples.join("request.valid.JSON"),
+        serde_json::json!({"title": "Safe conservation lesson"}).to_string(),
+    )?;
+
+    let output = Command::new(verifier())
+        .arg("--root")
+        .arg(temp.path())
+        .output()?;
+
+    assert!(
+        output.status.success(),
+        "expected uppercase JSON extension to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(())
+}
+
+#[test]
 fn unsafe_fixture_values_fail_without_echoing_secret() -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
     let examples = temp.path().join("examples/mvp");

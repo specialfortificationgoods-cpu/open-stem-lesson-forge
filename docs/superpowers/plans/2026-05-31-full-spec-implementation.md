@@ -229,8 +229,9 @@ Implement spec `008` deterministic command handlers against an in-memory storage
 - promotion;
 - artifact submission;
 - validation submission;
-- review submission;
-- critique/repair/interruption submission.
+- review submission.
+
+Spec `014` critique, repair, and interruption ingestion is post-MVP for the central API. Spec `012` keeps `CR-GATE-*` rows deferred and requires negative-unavailable checks until a later focused spec revision activates those surfaces with matching data contracts and acceptance tests.
 
 ## Phase 9: Review, Publication, and Public Labels
 

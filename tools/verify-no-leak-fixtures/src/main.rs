@@ -99,7 +99,12 @@ fn scan_path(path: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
         });
         return Ok(());
     }
-    if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+    if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| extension.eq_ignore_ascii_case("json"))
+        != Some(true)
+    {
         findings.push(Finding {
             path: path.to_path_buf(),
             reason: "unsupported_fixture_extension",

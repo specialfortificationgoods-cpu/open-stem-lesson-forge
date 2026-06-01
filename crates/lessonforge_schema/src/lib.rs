@@ -714,7 +714,7 @@ fn validate_against_schema(
     let schema_value = read_json(&root.join("schemas").join(schema_file), schema)
         .map_err(|_| SchemaError::new(schema, "schema_json_invalid", "/schemas"))?;
     validate_schema_document(schema, &schema_value)?;
-    validate_schema_value(schema, &schema_value, fixture, "/")
+    validate_schema_value(schema, &schema_value, &schema_value, fixture, "/")
 }
 
 fn validate_schema_document(schema: SchemaName, value: &Value) -> Result<(), SchemaError> {
@@ -731,12 +731,13 @@ fn validate_schema_document(schema: SchemaName, value: &Value) -> Result<(), Sch
         "schema_compile_failed",
         "/schemas",
     )?;
-    reject_unsupported_schema_keywords(schema, value)
+    reject_unsupported_schema_keywords(schema, value, false)
 }
 
 fn reject_unsupported_schema_keywords(
     schema: SchemaName,
     value: &Value,
+    allow_partial_object_schema: bool,
 ) -> Result<(), SchemaError> {
     match value {
         Value::Object(object) => {
@@ -754,10 +755,12 @@ fn reject_unsupported_schema_keywords(
                 "const",
                 "enum",
                 "anyOf",
+                "allOf",
                 "pattern",
                 "properties",
                 "items",
                 "prefixItems",
+                "$ref",
             ]
             .iter()
             .any(|keyword| object.contains_key(*keyword));
@@ -849,6 +852,7 @@ fn reject_unsupported_schema_keywords(
                 object,
                 "object",
                 &["properties", "required", "additionalProperties"],
+                allow_partial_object_schema,
             )?;
             require_type_for_keyword_family(
                 schema,
@@ -861,17 +865,40 @@ fn reject_unsupported_schema_keywords(
                     "maxItems",
                     "uniqueItems",
                 ],
+                false,
             )?;
             require_type_for_keyword_family(
                 schema,
                 object,
                 "string",
                 &["pattern", "minLength", "maxLength"],
+                false,
             )?;
             if object
                 .get("anyOf")
                 .is_some_and(|any_of| any_of.as_array().is_none_or(|items| items.is_empty()))
             {
+                return Err(SchemaError::new(
+                    schema,
+                    "schema_compile_failed",
+                    "/schemas",
+                ));
+            }
+            if object
+                .get("allOf")
+                .is_some_and(|all_of| all_of.as_array().is_none_or(|items| items.is_empty()))
+            {
+                return Err(SchemaError::new(
+                    schema,
+                    "schema_compile_failed",
+                    "/schemas",
+                ));
+            }
+            if object.get("$ref").is_some_and(|reference| {
+                reference
+                    .as_str()
+                    .is_none_or(|reference| !reference.starts_with("#/$defs/"))
+            }) {
                 return Err(SchemaError::new(
                     schema,
                     "schema_compile_failed",
@@ -897,7 +924,7 @@ fn reject_unsupported_schema_keywords(
                     ));
                 };
                 for child in properties.values() {
-                    reject_unsupported_schema_keywords(schema, child)?;
+                    reject_unsupported_schema_keywords(schema, child, false)?;
                 }
             }
             if let Some(items) = object.get("items") {
@@ -908,7 +935,7 @@ fn reject_unsupported_schema_keywords(
                         "/schemas",
                     ));
                 }
-                reject_unsupported_schema_keywords(schema, items)?;
+                reject_unsupported_schema_keywords(schema, items, false)?;
             }
             if let Some(prefix_items_value) = object.get("prefixItems") {
                 let Some(prefix_items) = prefix_items_value.as_array() else {
@@ -926,12 +953,29 @@ fn reject_unsupported_schema_keywords(
                     ));
                 }
                 for child in prefix_items {
-                    reject_unsupported_schema_keywords(schema, child)?;
+                    reject_unsupported_schema_keywords(schema, child, false)?;
+                }
+            }
+            if let Some(defs_value) = object.get("$defs") {
+                let Some(defs) = defs_value.as_object() else {
+                    return Err(SchemaError::new(
+                        schema,
+                        "schema_compile_failed",
+                        "/schemas",
+                    ));
+                };
+                for child in defs.values() {
+                    reject_unsupported_schema_keywords(schema, child, false)?;
                 }
             }
             if let Some(any_of) = object.get("anyOf").and_then(Value::as_array) {
                 for child in any_of {
-                    reject_unsupported_schema_keywords(schema, child)?;
+                    reject_unsupported_schema_keywords(schema, child, true)?;
+                }
+            }
+            if let Some(all_of) = object.get("allOf").and_then(Value::as_array) {
+                for child in all_of {
+                    reject_unsupported_schema_keywords(schema, child, true)?;
                 }
             }
             if let Some(pattern_value) = object.get("pattern") {
@@ -967,9 +1011,13 @@ fn require_type_for_keyword_family(
     object: &serde_json::Map<String, Value>,
     required_type: &'static str,
     keywords: &[&str],
+    allow_missing_type: bool,
 ) -> Result<(), SchemaError> {
     if keywords.iter().any(|keyword| object.contains_key(*keyword))
-        && object.get("type").and_then(Value::as_str) != Some(required_type)
+        && match object.get("type").and_then(Value::as_str) {
+            Some(actual_type) => actual_type != required_type,
+            None => !allow_missing_type,
+        }
     {
         return Err(SchemaError::new(
             schema,
@@ -986,10 +1034,13 @@ fn schema_keyword_is_supported(keyword: &str) -> bool {
         "$schema"
             | "title"
             | "description"
+            | "$defs"
+            | "$ref"
             | "type"
             | "const"
             | "enum"
             | "anyOf"
+            | "allOf"
             | "pattern"
             | "properties"
             | "items"
@@ -1006,27 +1057,48 @@ fn schema_keyword_is_supported(keyword: &str) -> bool {
 
 fn validate_schema_value(
     schema_name: SchemaName,
+    root_schema: &Value,
     schema: &Value,
     value: &Value,
     field_path: &str,
 ) -> Result<(), SchemaError> {
+    if let Some(reference) = schema.get("$ref").and_then(Value::as_str) {
+        let Some(referenced_schema) = resolve_schema_ref(root_schema, reference) else {
+            return Err(SchemaError::new(
+                schema_name,
+                "schema_compile_failed",
+                "/schemas",
+            ));
+        };
+        return validate_schema_value(
+            schema_name,
+            root_schema,
+            referenced_schema,
+            value,
+            field_path,
+        );
+    }
+    if let Some(all_of) = schema.get("allOf").and_then(Value::as_array) {
+        for option in all_of {
+            validate_schema_value(schema_name, root_schema, option, value, field_path)?;
+        }
+    }
     if let Some(any_of) = schema.get("anyOf").and_then(Value::as_array) {
         let mut matched = false;
         for option in any_of {
-            match validate_schema_value(schema_name, option, value, field_path) {
+            match validate_schema_value(schema_name, root_schema, option, value, field_path) {
                 Ok(()) => matched = true,
                 Err(error) if error.code == "schema_compile_failed" => return Err(error),
                 Err(_) => {}
             }
         }
-        if matched {
-            return Ok(());
+        if !matched {
+            return Err(SchemaError::new(
+                schema_name,
+                "fixture_schema_validation_failed",
+                field_path,
+            ));
         }
-        return Err(SchemaError::new(
-            schema_name,
-            "fixture_schema_validation_failed",
-            field_path,
-        ));
     }
     if let Some(expected_const) = schema.get("const") {
         return require_eq(
@@ -1046,8 +1118,10 @@ fn validate_schema_value(
     }
 
     match schema.get("type").and_then(Value::as_str) {
-        Some("object") => validate_schema_object(schema_name, schema, value, field_path),
-        Some("array") => validate_schema_array(schema_name, schema, value, field_path),
+        Some("object") => {
+            validate_schema_object(schema_name, root_schema, schema, value, field_path)
+        }
+        Some("array") => validate_schema_array(schema_name, root_schema, schema, value, field_path),
         Some("string") => validate_schema_string(schema_name, schema, value, field_path),
         Some("integer") => require_eq(
             schema_name,
@@ -1061,16 +1135,24 @@ fn validate_schema_value(
             "fixture_schema_validation_failed",
             field_path,
         ),
-        _ => Err(SchemaError::new(
-            schema_name,
-            "schema_compile_failed",
-            "/schemas",
-        )),
+        _ if schema.get("properties").is_some() || schema.get("required").is_some() => {
+            validate_schema_object(schema_name, root_schema, schema, value, field_path)
+        }
+        _ if schema.get("items").is_some() || schema.get("prefixItems").is_some() => {
+            validate_schema_array(schema_name, root_schema, schema, value, field_path)
+        }
+        _ => Ok(()),
     }
+}
+
+fn resolve_schema_ref<'a>(root_schema: &'a Value, reference: &str) -> Option<&'a Value> {
+    let name = reference.strip_prefix("#/$defs/")?;
+    root_schema.get("$defs")?.get(name)
 }
 
 fn validate_schema_object(
     schema_name: SchemaName,
+    root_schema: &Value,
     schema: &Value,
     value: &Value,
     field_path: &str,
@@ -1116,7 +1198,13 @@ fn validate_schema_object(
         for (key, property_schema) in properties {
             if let Some(nested) = object.get(key) {
                 let child_path = json_pointer_child(field_path, key);
-                validate_schema_value(schema_name, property_schema, nested, &child_path)?;
+                validate_schema_value(
+                    schema_name,
+                    root_schema,
+                    property_schema,
+                    nested,
+                    &child_path,
+                )?;
             }
         }
     }
@@ -1125,6 +1213,7 @@ fn validate_schema_object(
 
 fn validate_schema_array(
     schema_name: SchemaName,
+    root_schema: &Value,
     schema: &Value,
     value: &Value,
     field_path: &str,
@@ -1170,12 +1259,12 @@ fn validate_schema_array(
     if let Some(prefix_items) = schema.get("prefixItems").and_then(Value::as_array) {
         for (index, (item, item_schema)) in items.iter().zip(prefix_items).enumerate() {
             let child_path = json_pointer_child(field_path, &index.to_string());
-            validate_schema_value(schema_name, item_schema, item, &child_path)?;
+            validate_schema_value(schema_name, root_schema, item_schema, item, &child_path)?;
         }
     } else if let Some(item_schema) = schema.get("items") {
         for (index, item) in items.iter().enumerate() {
             let child_path = json_pointer_child(field_path, &index.to_string());
-            validate_schema_value(schema_name, item_schema, item, &child_path)?;
+            validate_schema_value(schema_name, root_schema, item_schema, item, &child_path)?;
         }
     }
     Ok(())
@@ -1562,13 +1651,18 @@ fn validate_safe_text(
 
 fn contains_unsafe_safe_text_marker(value: &str) -> bool {
     let lower = value.to_ascii_lowercase();
+    let has_windows_drive_path = value.as_bytes().windows(3).any(|window| {
+        window[0].is_ascii_alphabetic() && window[1] == b':' && matches!(window[2], b'\\' | b'/')
+    });
+    let has_unc_path = value.as_bytes().windows(2).any(|window| window == b"\\\\");
     let has_local_path = value.contains("/Users/")
         || value.contains("/home/")
         || value.contains("/etc/")
         || value.contains("/private/")
         || value.contains("/var/")
         || value.contains("/tmp/")
-        || value.contains("C:\\")
+        || has_windows_drive_path
+        || has_unc_path
         || value.contains("../")
         || value.contains("~/")
         || lower.contains("ssh/");

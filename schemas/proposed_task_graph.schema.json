@@ -18,6 +18,39 @@
     "validation_plan",
     "human_review_required_for"
   ],
+  "$defs": {
+    "required_capabilities_enum": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "stem_pedagogy",
+          "structured_markdown",
+          "basic_python",
+          "artifact_validation",
+          "python_execution_limited",
+          "human_subject_review",
+          "human_pedagogy_review"
+        ]
+      }
+    },
+    "validation_required_enum": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "manifest_schema",
+          "required_files",
+          "license_metadata",
+          "ai_assistance_disclosure",
+          "obvious_pii_heuristic",
+          "obvious_inappropriate_content_heuristic",
+          "python_checker_runs",
+          "no_external_network_static"
+        ]
+      }
+    }
+  },
   "properties": {
     "proposal_id": { "type": "string", "pattern": "^plan_[a-z0-9_-]+$" },
     "request_id": { "const": "req_energy_001" },
@@ -129,21 +162,7 @@
                 "uniqueItems": true,
                 "items": { "type": "string", "maxLength": 64, "pattern": "^[a-z0-9_-]+$" }
               },
-              "required_capabilities": {
-                "type": "array",
-                "uniqueItems": true,
-                "items": {
-                  "enum": [
-                    "stem_pedagogy",
-                    "structured_markdown",
-                    "basic_python",
-                    "artifact_validation",
-                    "python_execution_limited",
-                    "human_subject_review",
-                    "human_pedagogy_review"
-                  ]
-                }
-              },
+              "required_capabilities": { "$ref": "#/$defs/required_capabilities_enum" },
               "outputs": {
                 "type": "array",
                 "minItems": 5,
@@ -159,22 +178,7 @@
                   ]
                 }
               },
-              "validation_required": {
-                "type": "array",
-                "uniqueItems": true,
-                "items": {
-                  "enum": [
-                    "manifest_schema",
-                    "required_files",
-                    "license_metadata",
-                    "ai_assistance_disclosure",
-                    "obvious_pii_heuristic",
-                    "obvious_inappropriate_content_heuristic",
-                    "python_checker_runs",
-                    "no_external_network_static"
-                  ]
-                }
-              },
+              "validation_required": { "$ref": "#/$defs/validation_required_enum" },
               "human_review_required_for": {
                 "type": "array",
                 "uniqueItems": true,
@@ -220,21 +224,7 @@
                 "uniqueItems": true,
                 "items": { "type": "string", "maxLength": 64, "pattern": "^[a-z0-9_-]+$" }
               },
-              "required_capabilities": {
-                "type": "array",
-                "uniqueItems": true,
-                "items": {
-                  "enum": [
-                    "stem_pedagogy",
-                    "structured_markdown",
-                    "basic_python",
-                    "artifact_validation",
-                    "python_execution_limited",
-                    "human_subject_review",
-                    "human_pedagogy_review"
-                  ]
-                }
-              },
+              "required_capabilities": { "$ref": "#/$defs/required_capabilities_enum" },
               "outputs": {
                 "type": "array",
                 "minItems": 1,
@@ -244,22 +234,7 @@
                   "const": "validation_report.json"
                 }
               },
-              "validation_required": {
-                "type": "array",
-                "uniqueItems": true,
-                "items": {
-                  "enum": [
-                    "manifest_schema",
-                    "required_files",
-                    "license_metadata",
-                    "ai_assistance_disclosure",
-                    "obvious_pii_heuristic",
-                    "obvious_inappropriate_content_heuristic",
-                    "python_checker_runs",
-                    "no_external_network_static"
-                  ]
-                }
-              },
+              "validation_required": { "$ref": "#/$defs/validation_required_enum" },
               "human_review_required_for": {
                 "type": "array",
                 "uniqueItems": true,
@@ -304,21 +279,7 @@
                 "uniqueItems": true,
                 "items": { "type": "string", "maxLength": 64, "pattern": "^[a-z0-9_-]+$" }
               },
-              "required_capabilities": {
-                "type": "array",
-                "uniqueItems": true,
-                "items": {
-                  "enum": [
-                    "stem_pedagogy",
-                    "structured_markdown",
-                    "basic_python",
-                    "artifact_validation",
-                    "python_execution_limited",
-                    "human_subject_review",
-                    "human_pedagogy_review"
-                  ]
-                }
-              },
+              "required_capabilities": { "$ref": "#/$defs/required_capabilities_enum" },
               "outputs": {
                 "type": "array",
                 "minItems": 1,
@@ -328,22 +289,7 @@
                   "const": "review.json"
                 }
               },
-              "validation_required": {
-                "type": "array",
-                "uniqueItems": true,
-                "items": {
-                  "enum": [
-                    "manifest_schema",
-                    "required_files",
-                    "license_metadata",
-                    "ai_assistance_disclosure",
-                    "obvious_pii_heuristic",
-                    "obvious_inappropriate_content_heuristic",
-                    "python_checker_runs",
-                    "no_external_network_static"
-                  ]
-                }
-              },
+              "validation_required": { "$ref": "#/$defs/validation_required_enum" },
               "human_review_required_for": {
                 "type": "array",
                 "uniqueItems": true,

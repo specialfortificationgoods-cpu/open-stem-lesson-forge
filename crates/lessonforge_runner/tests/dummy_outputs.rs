@@ -495,8 +495,14 @@ fn dummy_config_with_workspace_and_key(
     if mode == RunnerMode::DummyGenerator {
         let key_dir = workspace_root.join("keys");
         let key_path = key_dir.join("dummy-runner-ed25519.hex");
-        std::fs::create_dir_all(&key_dir).ok();
-        std::fs::write(&key_path, hex_seed(seed)).ok();
+        assert!(
+            std::fs::create_dir_all(&key_dir).is_ok(),
+            "failed to create runner key directory for test fixture"
+        );
+        assert!(
+            std::fs::write(&key_path, hex_seed(seed)).is_ok(),
+            "failed to write runner key for test fixture"
+        );
         config.attestation.runner_key_id = runner_key_id.to_owned();
         config.attestation.ed25519_private_key_path = key_path.display().to_string();
     }

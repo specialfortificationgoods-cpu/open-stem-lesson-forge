@@ -69,14 +69,16 @@ MVP forbidden capabilities:
 
 ## Task Types and Execution Policies
 
-New MVP task types:
+Compatibility with the spec `012` MVP gate: this spec defines the secure code critique and repair contract, but its central API ingestion surfaces are not active in the current MVP gate. Spec `012` keeps `CR-GATE-*` rows as `deferred_by_spec` and requires negative-unavailable checks for central critique, repair, and interruption submission endpoints until a later gate explicitly activates this spec. The runner/core contract, schemas, and policy tests may exist ahead of activation, but the central backend must not expose these submission surfaces in the MVP API.
+
+Post-MVP task types activated by this spec:
 
 | Task type | Purpose | Execution policy |
 |---|---|---|
 | `critique_generated_code` | Review generated `checker.py` and submit advisory findings. | `sandboxed_code_critique_python_checker` |
 | `repair_generated_code` | Produce a repaired artifact bundle candidate. | `sandboxed_code_repair_python_checker` |
 
-Execution policy enum additions:
+Post-MVP execution policy enum additions:
 
 - `sandboxed_code_critique_python_checker`
 - `sandboxed_code_repair_python_checker`
@@ -96,7 +98,7 @@ The central backend may create a `critique_generated_code` work packet when one 
 - trusted validation fails with a repairable code-related failure code;
 - a human reviewer requests code-focused advisory critique through a future reviewed human-review extension.
 
-The MVP deterministic default is:
+When a later gate activates spec `014`, the deterministic default is:
 
 - create at most one code critique work packet for the initial `draft_generated` artifact;
 - create repair work packets only when either a curator explicitly requests repair or the automated repair-loop gates below pass;

@@ -350,6 +350,14 @@ A runner may claim a planning task only when all are true:
 - Runner is not revoked, paused, quarantined, or over configured abuse limits.
 
 Capability names are eligibility filters only. They do not make runner output authoritative.
+The capability symbols above are the canonical `ActorCapability` values from spec `005` and must be present in the redacted `capabilities.workflow_capabilities` section of the spec `004` runner capability summary before claim:
+
+| Planner eligibility symbol | Canonical actor capability | Runner capability summary field |
+|---|---|---|
+| `request_interpretation` | `request_interpretation` | `capabilities.workflow_capabilities[]` |
+| `task_decomposition` | `task_decomposition` | `capabilities.workflow_capabilities[]` |
+| `structured_json_output` | `structured_json_output` | `capabilities.workflow_capabilities[]` |
+| `policy_reasoning` | `policy_reasoning` | `capabilities.workflow_capabilities[]` |
 
 ## Planning Claim Policy
 

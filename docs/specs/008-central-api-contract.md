@@ -1597,10 +1597,11 @@ Expire or release all active planning leases without an accepted proposal until 
 Expected:
 
 - Planning task becomes `cancelled`.
-- Request advances to terminal internal state `planning_failed`.
+- Request advances to `planning_failed`, the terminal state for normal planning workflow.
 - Safe event reason code is `planning_abandoned_retry_limit`.
 - No proposed graph, selected plan, work packet, artifact, or review task is created.
 - Later planning claims and submissions are rejected replay-stably with safe conflict codes.
+- Only explicit curator/admin remediation may later mark the failed request `deprecated`; no runner or normal planning API path may transition it onward.
 
 ### API-001B: Rejected or forged moderation blocks planning
 
