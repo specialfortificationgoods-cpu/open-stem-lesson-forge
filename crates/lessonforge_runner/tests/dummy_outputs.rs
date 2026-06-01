@@ -225,6 +225,7 @@ fn dummy_generator_requires_valid_attestation_config() -> Result<(), Box<dyn Err
     std::fs::create_dir_all(&large_key_dir)?;
     let large_key_path = large_key_dir.join("runner.hex");
     std::fs::write(&large_key_path, vec![b'a'; 2048])?;
+    restrict_key_file_permissions(&large_key_path)?;
     let mut large_key = dummy_config_with_workspace(
         "actor_generator_001",
         "Dummy Generator",
@@ -242,6 +243,7 @@ fn dummy_generator_requires_valid_attestation_config() -> Result<(), Box<dyn Err
         &uppercase_key_path,
         hex_seed(&[10; 32]).to_ascii_uppercase(),
     )?;
+    restrict_key_file_permissions(&uppercase_key_path)?;
     let mut uppercase_key = dummy_config_with_workspace(
         "actor_generator_001",
         "Dummy Generator",
@@ -260,6 +262,7 @@ fn dummy_generator_requires_valid_attestation_config() -> Result<(), Box<dyn Err
     )?;
     let private_key_path = private_key_dir.path().join("runner.hex");
     std::fs::write(&private_key_path, hex_seed(&[11; 32]))?;
+    restrict_key_file_permissions(&private_key_path)?;
     let mut private_dir_key = dummy_config_with_workspace(
         "actor_generator_001",
         "Dummy Generator",
@@ -284,6 +287,30 @@ fn dummy_generator_requires_valid_attestation_config() -> Result<(), Box<dyn Err
         config_error_code(&private_dir_key),
         "invalid_attestation_config"
     );
+
+    #[cfg(unix)]
+    {
+        let insecure_key_dir = temp.path().join("insecure-key");
+        std::fs::create_dir_all(&insecure_key_dir)?;
+        let insecure_key_path = insecure_key_dir.join("runner.hex");
+        std::fs::write(&insecure_key_path, hex_seed(&[12; 32]))?;
+        std::fs::set_permissions(
+            &insecure_key_path,
+            std::os::unix::fs::PermissionsExt::from_mode(0o644),
+        )?;
+        let mut insecure_key = dummy_config_with_workspace(
+            "actor_generator_001",
+            "Dummy Generator",
+            RunnerMode::DummyGenerator,
+            temp.path(),
+        );
+        insecure_key.attestation.runner_key_id = "rkey_dummy_generator_001".to_owned();
+        insecure_key.attestation.ed25519_private_key_path = insecure_key_path.display().to_string();
+        assert_eq!(
+            config_error_code(&insecure_key),
+            "invalid_attestation_config"
+        );
+    }
 
     #[cfg(unix)]
     {
@@ -503,10 +530,26 @@ fn dummy_config_with_workspace_and_key(
             std::fs::write(&key_path, hex_seed(seed)).is_ok(),
             "failed to write runner key for test fixture"
         );
+        assert!(
+            restrict_key_file_permissions(&key_path).is_ok(),
+            "failed to restrict runner key permissions"
+        );
         config.attestation.runner_key_id = runner_key_id.to_owned();
         config.attestation.ed25519_private_key_path = key_path.display().to_string();
     }
     config
+}
+
+fn restrict_key_file_permissions(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o600))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Ok(())
+    }
 }
 
 fn config_error_code(config: &lessonforge_runner::RunnerConfig) -> &'static str {
@@ -524,12 +567,14 @@ fn hex_seed(seed: &[u8; 32]) -> String {
 }
 
 fn assert_safe_runner_output(output: &str) {
+    let output_lower = output.to_ascii_lowercase();
     for forbidden in [
         "provider", "prompt:", "prompt=", "api_key", "sk-", "/Users/", "/tmp/", "http://",
         "https://",
     ] {
+        let forbidden_lower = forbidden.to_ascii_lowercase();
         assert!(
-            !output.to_ascii_lowercase().contains(forbidden),
+            !output_lower.contains(&forbidden_lower),
             "output leaked forbidden marker: {forbidden}"
         );
     }

@@ -13,13 +13,12 @@ fn dummy_planner_config_validates_and_emits_redacted_summary() -> Result<(), Box
     let rendered = format!("{summary:?}");
 
     assert_eq!(summary.runner_id, "actor_planner_001");
-    assert_eq!(summary.capabilities.phases, vec!["request_normalization"]);
+    assert_eq!(summary.capabilities.phases, vec!["request_planning"]);
     assert_eq!(summary.capabilities.task_types, vec!["propose_task_graph"]);
     assert_eq!(
         summary.capabilities.workflow_capabilities,
         vec![
             "request_interpretation",
-            "request_normalization",
             "task_decomposition",
             "policy_reasoning"
         ]

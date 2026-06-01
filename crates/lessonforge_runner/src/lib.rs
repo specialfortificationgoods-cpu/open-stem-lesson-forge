@@ -173,11 +173,10 @@ impl CapabilityConfig {
                 vec!["structured_json_output"],
             ),
             RunnerMode::DummyPlanner => (
-                vec!["request_normalization"],
+                vec!["request_planning"],
                 vec!["propose_task_graph"],
                 vec![
                     "request_interpretation",
-                    "request_normalization",
                     "task_decomposition",
                     "policy_reasoning",
                 ],
@@ -1126,6 +1125,7 @@ fn read_bounded_ed25519_key_file(path: &Path) -> Result<Vec<u8>, std::io::Error>
             "ed25519 key path is not a regular file",
         ));
     }
+    reject_insecure_key_file_permissions(&metadata)?;
     let mut file = open_key_file_without_following_symlinks(path)?;
     let opened_metadata = file.metadata()?;
     if !opened_metadata.file_type().is_file() {
@@ -1134,6 +1134,7 @@ fn read_bounded_ed25519_key_file(path: &Path) -> Result<Vec<u8>, std::io::Error>
             "ed25519 key path is not a regular file",
         ));
     }
+    reject_insecure_key_file_permissions(&opened_metadata)?;
     if opened_metadata.len() > MAX_ED25519_KEY_FILE_BYTES {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
@@ -1151,6 +1152,22 @@ fn read_bounded_ed25519_key_file(path: &Path) -> Result<Vec<u8>, std::io::Error>
         ));
     }
     Ok(bytes)
+}
+
+#[cfg(unix)]
+fn reject_insecure_key_file_permissions(metadata: &fs::Metadata) -> Result<(), std::io::Error> {
+    if metadata.permissions().mode() & 0o077 != 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "ed25519 key file has insecure permissions",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn reject_insecure_key_file_permissions(_metadata: &fs::Metadata) -> Result<(), std::io::Error> {
+    Ok(())
 }
 
 #[cfg(any(

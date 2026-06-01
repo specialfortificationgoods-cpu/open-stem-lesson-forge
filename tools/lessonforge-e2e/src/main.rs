@@ -67,6 +67,18 @@ const REQUIRED_ROWS: &[(&str, &str)] = &[
     ("API-GATE-002", "automated"),
 ];
 
+const DEFERRED_NEGATIVE_ROWS: &[&str] = &[
+    "LEAK-004",
+    "API-GATE-002",
+    "CR-GATE-001",
+    "CR-GATE-002",
+    "CR-GATE-003",
+    "CR-GATE-004",
+    "CR-GATE-005",
+    "CR-GATE-006",
+    "CR-GATE-007",
+];
+
 #[derive(Debug, Deserialize)]
 struct Manifest {
     spec: String,
@@ -128,17 +140,7 @@ fn run() -> Result<String, String> {
 
     // One deterministic smoke run covers the full-slice E2E rows.
     run_full_mvp_smoke(&args.root)?;
-    for row_id in [
-        "LEAK-004",
-        "API-GATE-002",
-        "CR-GATE-001",
-        "CR-GATE-002",
-        "CR-GATE-003",
-        "CR-GATE-004",
-        "CR-GATE-005",
-        "CR-GATE-006",
-        "CR-GATE-007",
-    ] {
+    for &row_id in DEFERRED_NEGATIVE_ROWS {
         let row = rows
             .get(row_id)
             .ok_or_else(|| "manifest_missing_required_row".to_owned())?;
@@ -277,18 +279,7 @@ fn run_case(root: &Path, row: &ManifestRow) -> Result<CaseExecution, String> {
 }
 
 fn is_deferred_negative_case(row_id: &str) -> bool {
-    matches!(
-        row_id,
-        "LEAK-004"
-            | "API-GATE-002"
-            | "CR-GATE-001"
-            | "CR-GATE-002"
-            | "CR-GATE-003"
-            | "CR-GATE-004"
-            | "CR-GATE-005"
-            | "CR-GATE-006"
-            | "CR-GATE-007"
-    )
+    DEFERRED_NEGATIVE_ROWS.contains(&row_id)
 }
 
 fn verify_unavailable_code_repair_ingestion_surface(root: &Path) -> Result<(), String> {
@@ -427,6 +418,12 @@ fn run_full_mvp_smoke(root: &Path) -> Result<(), String> {
     fs::write(
         &key_path,
         "0707070707070707070707070707070707070707070707070707070707070707",
+    )
+    .map_err(|_| "generator_key_unavailable")?;
+    #[cfg(unix)]
+    fs::set_permissions(
+        &key_path,
+        std::os::unix::fs::PermissionsExt::from_mode(0o600),
     )
     .map_err(|_| "generator_key_unavailable")?;
     generator_config.attestation.runner_key_id = "rkey_dummy_generator_001".to_owned();

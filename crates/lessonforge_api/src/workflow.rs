@@ -274,7 +274,7 @@ impl DeterministicWorkflow {
         source_lineage: SourceActorLineage,
     ) -> Result<ReviewClaimResult, ReviewPolicyError> {
         if idempotency_key.is_empty() {
-            return Err(ReviewPolicyError::ReviewSubmissionLineageMismatch);
+            return Err(ReviewPolicyError::InvalidIdempotencyKey);
         }
         validate_idempotency_key(idempotency_key)?;
         self.expire_review_claim_if_needed();
@@ -383,7 +383,7 @@ impl DeterministicWorkflow {
         submission: ReviewSubmission,
     ) -> Result<ReviewSubmissionResult, ReviewPolicyError> {
         if idempotency_key.is_empty() {
-            return Err(ReviewPolicyError::ReviewSubmissionLineageMismatch);
+            return Err(ReviewPolicyError::InvalidIdempotencyKey);
         }
         validate_idempotency_key(idempotency_key)?;
         let submission_digest = review_submission_digest(&submission);
@@ -746,7 +746,7 @@ fn hex_lower(bytes: &[u8]) -> String {
 
 fn validate_idempotency_key(value: &str) -> Result<(), ReviewPolicyError> {
     if !(8..=128).contains(&value.len()) {
-        return Err(ReviewPolicyError::ReviewSubmissionLineageMismatch);
+        return Err(ReviewPolicyError::InvalidIdempotencyKey);
     }
     let lower = value.to_ascii_lowercase();
     let valid = value
@@ -766,7 +766,7 @@ fn validate_idempotency_key(value: &str) -> Result<(), ReviewPolicyError> {
     if valid {
         Ok(())
     } else {
-        Err(ReviewPolicyError::ReviewSubmissionLineageMismatch)
+        Err(ReviewPolicyError::InvalidIdempotencyKey)
     }
 }
 

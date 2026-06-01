@@ -92,7 +92,7 @@ fn accepted_moderation_report_creates_mechanical_planning_task() -> Result<(), B
     };
     assert_eq!(planning_task.state, PlanningTaskState::Open);
     assert_eq!(planning_task.task_type, "propose_task_graph");
-    assert_eq!(planning_task.phase, "request_normalization");
+    assert_eq!(planning_task.phase, "request_planning");
     assert_eq!(
         planning_task.required_output_schema,
         "proposed_task_graph.schema.json"

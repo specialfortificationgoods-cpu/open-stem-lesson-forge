@@ -287,6 +287,8 @@ pub enum ReviewPolicyError {
     ReviewVerifierSecretUnavailable,
     #[error("review submission lineage mismatch")]
     ReviewSubmissionLineageMismatch,
+    #[error("invalid idempotency key")]
+    InvalidIdempotencyKey,
     #[error("review submitted authority field")]
     ReviewSubmittedAuthorityField,
     #[error("submitted finding authority field")]
@@ -305,6 +307,7 @@ impl ReviewPolicyError {
             Self::ReviewLeaseNotActive => "review_lease_not_active",
             Self::ReviewVerifierSecretUnavailable => "review_verifier_secret_unavailable",
             Self::ReviewSubmissionLineageMismatch => "review_submission_lineage_mismatch",
+            Self::InvalidIdempotencyKey => "invalid_idempotency_key",
             Self::ReviewSubmittedAuthorityField => "review_submitted_authority_field",
             Self::SubmittedFindingAuthorityField => "submitted_finding_authority_field",
             Self::InvalidFinding => "invalid_finding",

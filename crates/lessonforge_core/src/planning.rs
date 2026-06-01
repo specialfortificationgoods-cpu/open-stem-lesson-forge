@@ -56,7 +56,7 @@ pub fn mechanical_planning_task(
         request_id,
         scope_id,
         task_type: "propose_task_graph",
-        phase: "request_normalization",
+        phase: "request_planning",
         required_output_schema: "proposed_task_graph.schema.json",
         allowed_outputs: vec!["proposed_task_graph"],
         forbidden_outputs: vec![

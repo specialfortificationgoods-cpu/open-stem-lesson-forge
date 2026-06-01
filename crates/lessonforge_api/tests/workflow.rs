@@ -423,7 +423,7 @@ fn api_workflow_review_claim_requires_server_secret() -> Result<(), Box<dyn Erro
     let task = workflow.open_review_task(review_context()?)?;
 
     let error = workflow.claim_review_task(
-        task.review_task_id,
+        task.review_task_id.clone(),
         LeaseId::try_from("lease_review_energy_001")?,
         "review-claim-001",
         reviewer(
@@ -601,7 +601,7 @@ fn api_workflow_review_rejects_overlong_claim_token() -> Result<(), Box<dyn Erro
 
     let overlong_token = "a".repeat(1024 * 1024);
     let error = workflow.submit_human_review(
-        task.review_task_id,
+        task.review_task_id.clone(),
         LeaseId::try_from("lease_review_energy_001")?,
         &overlong_token,
         "review-submit-001",
@@ -611,6 +611,68 @@ fn api_workflow_review_rejects_overlong_claim_token() -> Result<(), Box<dyn Erro
     assert!(matches!(
         error,
         Err(ReviewPolicyError::ReviewLeaseNotActive)
+    ));
+    Ok(())
+}
+
+#[test]
+fn api_workflow_review_rejects_invalid_idempotency_key() -> Result<(), Box<dyn Error>> {
+    let mut workflow = test_workflow();
+    let task = workflow.open_review_task(review_context()?)?;
+    let claim_error = workflow.claim_review_task(
+        task.review_task_id.clone(),
+        LeaseId::try_from("lease_review_energy_001")?,
+        "",
+        reviewer(
+            "actor_reviewer_001",
+            "operator_reviewer",
+            "conflict_reviewer",
+        )?,
+        source_lineage()?,
+    );
+    assert!(matches!(
+        claim_error,
+        Err(ReviewPolicyError::InvalidIdempotencyKey)
+    ));
+
+    let claim = workflow.claim_review_task(
+        task.review_task_id.clone(),
+        LeaseId::try_from("lease_review_energy_001")?,
+        "review-claim-001",
+        reviewer(
+            "actor_reviewer_001",
+            "operator_reviewer",
+            "conflict_reviewer",
+        )?,
+        source_lineage()?,
+    )?;
+    let Some(claim_token) = claim.claim_token else {
+        return Err("claim should return token".into());
+    };
+
+    let error = workflow.submit_human_review(
+        task.review_task_id.clone(),
+        LeaseId::try_from("lease_review_energy_001")?,
+        &claim_token,
+        "token",
+        ReviewSubmission::approved_no_findings(),
+    );
+
+    assert!(matches!(
+        error,
+        Err(ReviewPolicyError::InvalidIdempotencyKey)
+    ));
+
+    let empty_error = workflow.submit_human_review(
+        task.review_task_id,
+        LeaseId::try_from("lease_review_energy_001")?,
+        &claim_token,
+        "",
+        ReviewSubmission::approved_no_findings(),
+    );
+    assert!(matches!(
+        empty_error,
+        Err(ReviewPolicyError::InvalidIdempotencyKey)
     ));
     Ok(())
 }

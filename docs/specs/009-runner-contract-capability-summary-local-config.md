@@ -94,9 +94,9 @@ runner_private_key_dir = ""
 [capabilities]
 subjects = ["physics"]
 languages = ["en"]
-phases = ["request_normalization"]
+phases = ["request_planning"]
 task_types = ["propose_task_graph"]
-workflow_capabilities = ["request_interpretation", "request_normalization", "task_decomposition", "policy_reasoning"]
+workflow_capabilities = ["request_interpretation", "task_decomposition", "policy_reasoning"]
 artifact_types = ["worksheet", "answer_key", "python_checker", "teacher_notes"]
 tools = ["structured_json_output"]
 max_risk_level = "low"
@@ -247,13 +247,12 @@ The runner may submit or expose this central-safe summary:
   "capabilities": {
     "subjects": ["physics"],
     "languages": ["en"],
-    "phases": ["request_normalization"],
+    "phases": ["request_planning"],
     "task_types": [
       "propose_task_graph"
     ],
     "workflow_capabilities": [
       "request_interpretation",
-      "request_normalization",
       "task_decomposition",
       "policy_reasoning"
     ],
@@ -278,7 +277,8 @@ Summary rules:
 - `trust_level` is central-assigned or centrally accepted config, not self-granted authority.
 - Capability summary is eligibility input only. It does not make runner output authoritative.
 - Central API may reject or reduce capabilities regardless of runner claims.
-- Planner claim checks evaluate `workflow_capabilities` and `tools` together under spec `006`; for example, MVP planning eligibility requires `request_interpretation`, `request_normalization`, `task_decomposition`, `policy_reasoning`, and `structured_json_output`.
+- Planner claim checks evaluate `workflow_capabilities` and `tools` together under spec `006`; for example, MVP planning eligibility requires `request_interpretation`, `task_decomposition`, `policy_reasoning`, and `structured_json_output`.
+- Planner-capable runners produce structured task graphs from requests; the central backend only schema-validates, policy-checks, verifies, and deterministically promotes or rejects those graphs.
 - `automated_repair_loop_opt_in` is allowed only for `dummy_code_repairer_auto_loop` and future reviewed repair modes.
 - `automated_repair_attempt_bucket` values are `0`, `1`, or `2`; exact private quota or budget is never reported.
 

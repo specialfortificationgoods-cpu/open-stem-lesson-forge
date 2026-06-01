@@ -192,7 +192,7 @@ After request moderation passes, the central core creates this mechanical planni
 {
   "id": "ptask_energy_001",
   "request_id": "req_energy_001",
-  "phase": "request_normalization",
+  "phase": "request_planning",
   "task_type": "propose_task_graph",
   "input_refs": ["req_energy_001"],
   "required_output_schema": "proposed_task_graph.schema.json",
