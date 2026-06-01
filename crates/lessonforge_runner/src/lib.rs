@@ -1322,6 +1322,7 @@ struct SelfTestAttestationPayload<'a> {
     attestation_schema_version: &'a str,
     runner_actor_id: &'a str,
     runner_key_id: &'a str,
+    signature_kind: &'a str,
     self_test_report_id: &'a str,
     work_packet_id: &'a str,
     lease_id: &'a str,
@@ -1343,6 +1344,7 @@ fn self_test_attestation_payload_canonical_bytes(
         attestation_schema_version: &report.attestation.attestation_schema_version,
         runner_actor_id: &report.runner_actor_id,
         runner_key_id: &report.attestation.runner_key_id,
+        signature_kind: &report.attestation.signature_kind,
         self_test_report_id: &report.self_test_report_id,
         work_packet_id: &report.work_packet_id,
         lease_id: &report.lease_id,
@@ -1464,8 +1466,11 @@ fn validate_pin_path(path: &str) -> Result<(), RunnerConfigError> {
     if path.file_name().is_none_or(|name| {
         name.to_str()
             .is_none_or(|name| name.is_empty() || !name.ends_with(".pem"))
-    }) || fs::File::open(path).is_err()
-    {
+    }) {
+        return Err(RunnerConfigError::UnsafeCentralApiOrigin);
+    }
+    let metadata = fs::metadata(path).map_err(|_| RunnerConfigError::UnsafeCentralApiOrigin)?;
+    if !metadata.is_file() || fs::File::open(path).is_err() {
         return Err(RunnerConfigError::UnsafeCentralApiOrigin);
     }
     Ok(())

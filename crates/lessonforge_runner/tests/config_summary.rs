@@ -127,6 +127,16 @@ fn non_loopback_https_origins_require_complete_pinned_transport() -> Result<(), 
         "unsafe_central_api_origin"
     );
 
+    let ca_directory = ca_dir.path().join("directory-ca.pem");
+    std::fs::create_dir(&ca_directory)?;
+    let mut directory_pin = wrong_name.clone();
+    directory_pin.transport.tls.pinned_ca_pem_path = ca_directory.display().to_string();
+    directory_pin.transport.tls.expected_server_name = "lessonforge.example".to_owned();
+    assert_eq!(
+        config_error_code(&directory_pin),
+        "unsafe_central_api_origin"
+    );
+
     let mut pinned_ca = empty_pin;
     pinned_ca.transport.tls.pinned_ca_pem_path = ca_path.display().to_string();
     pinned_ca.transport.tls.expected_server_name = "lessonforge.example".to_owned();

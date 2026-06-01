@@ -216,6 +216,45 @@ fn report_and_manifest_fixtures_are_closed() -> Result<(), Box<dyn Error>> {
     validate_plan_verification(&valid_plan_verification())?;
     validate_artifact_manifest(&valid_artifact_manifest())?;
 
+    for (field, unsafe_id) in [
+        ("request_moderation_report_id", "rmreport_/Users/alice"),
+        ("request_moderation_task_id", "rmtask_https://example"),
+        ("request_id", "req_sk_live_secret"),
+        ("lease_id", "lease_../token"),
+    ] {
+        let mut unsafe_moderation = valid_moderation_report();
+        unsafe_moderation[field] = json!(unsafe_id);
+        let unsafe_id_error = match validate_request_moderation_report(&unsafe_moderation) {
+            Ok(()) => return Err(format!("{field} should reject unsafe id shape").into()),
+            Err(error) => error,
+        };
+        assert_eq!(unsafe_id_error.code, "invalid_identifier");
+    }
+
+    let mut unsafe_graph_id = valid_graph();
+    unsafe_graph_id["proposal_id"] = json!("plan_sk_live_secret");
+    let unsafe_graph_error = match validate_proposed_task_graph(&unsafe_graph_id) {
+        Ok(()) => return Err("proposal_id should reject unsafe id shape".into()),
+        Err(error) => error,
+    };
+    assert_eq!(unsafe_graph_error.code, "invalid_identifier");
+
+    let mut unsafe_planner_id = valid_graph();
+    unsafe_planner_id["planner_runner_id"] = json!("actor_../planner");
+    let unsafe_planner_error = match validate_proposed_task_graph(&unsafe_planner_id) {
+        Ok(()) => return Err("planner_runner_id should reject unsafe id shape".into()),
+        Err(error) => error,
+    };
+    assert_eq!(unsafe_planner_error.code, "invalid_identifier");
+
+    let mut unsafe_manifest_id = valid_artifact_manifest();
+    unsafe_manifest_id["artifact_id"] = json!("art_https://example");
+    let unsafe_manifest_error = match validate_artifact_manifest(&unsafe_manifest_id) {
+        Ok(()) => return Err("artifact_id should reject unsafe id shape".into()),
+        Err(error) => error,
+    };
+    assert_eq!(unsafe_manifest_error.code, "invalid_identifier");
+
     let mut non_fixture_verification = valid_plan_verification();
     non_fixture_verification["verification_id"] = json!("pverify_general_002");
     non_fixture_verification["proposal_id"] = json!("plan_general_002");

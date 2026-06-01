@@ -263,25 +263,25 @@ pub fn validate_mvp_request(value: &Value) -> Result<(), SchemaError> {
 
 pub fn validate_request_moderation_report(value: &Value) -> Result<(), SchemaError> {
     let report: RequestModerationReport = deserialize(SchemaName::RequestModerationReport, value)?;
-    require_prefix(
+    require_prefixed_slug(
         SchemaName::RequestModerationReport,
         &report.request_moderation_report_id,
         "rmreport_",
         "/request_moderation_report_id",
     )?;
-    require_prefix(
+    require_prefixed_slug(
         SchemaName::RequestModerationReport,
         &report.request_moderation_task_id,
         "rmtask_",
         "/request_moderation_task_id",
     )?;
-    require_prefix(
+    require_prefixed_slug(
         SchemaName::RequestModerationReport,
         &report.request_id,
         "req_",
         "/request_id",
     )?;
-    require_prefix(
+    require_prefixed_slug(
         SchemaName::RequestModerationReport,
         &report.lease_id,
         "lease_",
@@ -318,7 +318,7 @@ pub fn validate_request_moderation_report(value: &Value) -> Result<(), SchemaErr
 
 pub fn validate_proposed_task_graph(value: &Value) -> Result<(), SchemaError> {
     let graph: ProposedTaskGraph = deserialize(SchemaName::ProposedTaskGraph, value)?;
-    require_prefix(
+    require_prefixed_slug(
         SchemaName::ProposedTaskGraph,
         &graph.proposal_id,
         "plan_",
@@ -336,7 +336,7 @@ pub fn validate_proposed_task_graph(value: &Value) -> Result<(), SchemaError> {
         "proposal_planning_lineage_mismatch",
         "/planning_task_id",
     )?;
-    require_prefix(
+    require_prefixed_slug(
         SchemaName::ProposedTaskGraph,
         &graph.planner_runner_id,
         "actor_",
@@ -539,7 +539,7 @@ fn contains_plan_verification_authority_claim(value: &str) -> bool {
 
 pub fn validate_artifact_manifest(value: &Value) -> Result<(), SchemaError> {
     let manifest: ArtifactManifest = deserialize(SchemaName::ArtifactManifest, value)?;
-    require_prefix(
+    require_prefixed_slug(
         SchemaName::ArtifactManifest,
         &manifest.artifact_id,
         "art_",
@@ -1796,20 +1796,6 @@ fn validate_safe_text_list(
         validate_safe_text(schema, value, field_path)?;
     }
     Ok(())
-}
-
-fn require_prefix(
-    schema: SchemaName,
-    value: &str,
-    prefix: &str,
-    field_path: &'static str,
-) -> Result<(), SchemaError> {
-    require_eq(
-        schema,
-        value.starts_with(prefix),
-        "invalid_identifier",
-        field_path,
-    )
 }
 
 fn require_prefixed_slug(
