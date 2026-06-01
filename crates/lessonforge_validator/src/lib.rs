@@ -856,14 +856,8 @@ def close(actual, expected):
 
 checks = [
     close(checker.kinetic_energy(2.0, 3.0), 9.0),
-    (
-        close(checker.gravitational_potential_energy(2.0, 9.8, 5.0), 98.0)
-        or close(checker.gravitational_potential_energy(2.0, 5.0, 9.8), 98.0)
-    ),
-    (
-        close(checker.speed_from_kinetic_energy(9.0, 2.0), 3.0)
-        or close(checker.speed_from_kinetic_energy(2.0, 9.0), 3.0)
-    ),
+    close(checker.gravitational_potential_energy(2.0, 9.8, 5.0), 98.0),
+    close(checker.speed_from_kinetic_energy(9.0, 2.0), 3.0),
 ]
 if not all(checks):
     raise SystemExit(1)
@@ -964,6 +958,11 @@ blocked_calls = {
     "print",
 }
 required = {"kinetic_energy", "gravitational_potential_energy", "speed_from_kinetic_energy"}
+required_args = {
+    "kinetic_energy": ["mass_kg", "speed_m_per_s"],
+    "gravitational_potential_energy": ["mass_kg", "g_m_per_s2", "height_m"],
+    "speed_from_kinetic_energy": ["kinetic_energy_j", "mass_kg"],
+}
 safe = True
 no_external_network = True
 try:
@@ -989,6 +988,18 @@ for index, node in enumerate(tree.body):
             no_external_network = False
     elif isinstance(node, ast.FunctionDef):
         if node.name not in required or node.decorator_list:
+            safe = False
+        expected_args = required_args.get(node.name)
+        actual_args = [arg.arg for arg in node.args.args]
+        if (
+            expected_args is None
+            or actual_args != expected_args
+            or node.args.vararg is not None
+            or node.args.kwarg is not None
+            or node.args.kwonlyargs
+            or node.args.defaults
+            or node.args.kw_defaults
+        ):
             safe = False
         found.add(node.name)
     elif index == 0 and isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
@@ -1695,15 +1706,50 @@ fn required_checker_functions_are_defined(source: &str) -> bool {
         if !trimmed.starts_with("def ") {
             continue;
         }
-        if trimmed.starts_with("def kinetic_energy(") {
+        if checker_function_has_exact_args(trimmed, "kinetic_energy", &["mass_kg", "speed_m_per_s"])
+        {
             found.insert("kinetic_energy");
-        } else if trimmed.starts_with("def gravitational_potential_energy(") {
+        } else if checker_function_has_exact_args(
+            trimmed,
+            "gravitational_potential_energy",
+            &["mass_kg", "g_m_per_s2", "height_m"],
+        ) {
             found.insert("gravitational_potential_energy");
-        } else if trimmed.starts_with("def speed_from_kinetic_energy(") {
+        } else if checker_function_has_exact_args(
+            trimmed,
+            "speed_from_kinetic_energy",
+            &["kinetic_energy_j", "mass_kg"],
+        ) {
             found.insert("speed_from_kinetic_energy");
         }
     }
     found.len() == 3
+}
+
+fn checker_function_has_exact_args(
+    line: &str,
+    function_name: &str,
+    expected_args: &[&str],
+) -> bool {
+    let Some(signature) = line.strip_prefix(&format!("def {function_name}(")) else {
+        return false;
+    };
+    let Some(arguments) = signature.split(')').next() else {
+        return false;
+    };
+    if arguments.contains('=') {
+        return false;
+    }
+    let actual_args = arguments
+        .split(',')
+        .map(|argument| {
+            argument
+                .trim()
+                .split_once(':')
+                .map_or_else(|| argument.trim(), |(name, _)| name.trim())
+        })
+        .collect::<Vec<_>>();
+    actual_args == expected_args
 }
 
 fn contains_word_token(value: &str, token: &str) -> bool {
@@ -1988,6 +2034,20 @@ def speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:
     return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)
 "#;
         let result = python_ast_checker_static_safety(source)
+            .ok_or_else(|| "python AST checker should execute".to_owned())?;
+
+        assert!(!result.safe);
+        assert!(result.no_external_network);
+        Ok(())
+    }
+
+    #[test]
+    fn python_ast_static_safety_rejects_swapped_required_args() -> Result<(), String> {
+        let source = VALID_CHECKER_SOURCE.replace(
+            "gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float)",
+            "gravitational_potential_energy(mass_kg: float, height_m: float, g_m_per_s2: float)",
+        );
+        let result = python_ast_checker_static_safety(&source)
             .ok_or_else(|| "python AST checker should execute".to_owned())?;
 
         assert!(!result.safe);

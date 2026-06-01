@@ -30,7 +30,6 @@ The MVP API may expose only these resource groups:
 - `/v1/work-packets`
 - `/v1/artifacts`
 - `/v1/validation-work-packets`
-- `/v1/validation-reports`
 - `/v1/review-tasks`
 - `/v1/reviews`
 - `/v1/public/artifacts`

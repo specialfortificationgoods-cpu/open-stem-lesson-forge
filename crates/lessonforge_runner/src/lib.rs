@@ -973,10 +973,10 @@ Ask learners to identify the system before substituting values.
 const CHECKER: &str = r#"import math
 def kinetic_energy(mass_kg, speed_m_per_s):
     return 0.5 * mass_kg * speed_m_per_s * speed_m_per_s
-def gravitational_potential_energy(mass_kg, height_m, gravity_m_per_s2):
-    return mass_kg * gravity_m_per_s2 * height_m
-def speed_from_kinetic_energy(mass_kg, energy_j):
-    return math.sqrt((2.0 * energy_j) / mass_kg)
+def gravitational_potential_energy(mass_kg, g_m_per_s2, height_m):
+    return mass_kg * g_m_per_s2 * height_m
+def speed_from_kinetic_energy(kinetic_energy_j, mass_kg):
+    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)
 "#;
 
 const DIGEST_FILE_ORDER: [&str; 5] = [

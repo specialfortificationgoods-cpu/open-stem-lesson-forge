@@ -264,7 +264,7 @@ Required conservation-of-energy sample cases:
 | `speed_from_kinetic_energy(9.0, 2.0)` | KE 9 J, mass 2 kg | `3.0` m/s |
 
 The validator-owned harness imports the checked module only after static AST checks pass, calls the exact functions with validator-owned sample cases, and compares numeric results with tolerance `1e-9`. Runner-controlled stdout or self-reported success is ignored and causes failure if emitted.
-During the transition from older fixture drafts, the constrained MVP subprocess profile may also accept the same numeric sample cases with the last two function argument orders swapped, but the canonical contract above is preferred for new fixtures.
+The constrained MVP subprocess profile does not provide a swapped-argument compatibility mode; older checker drafts with alternate argument orders fail `python_checker_runs` and must be regenerated before validation.
 
 If the exact function contracts are absent, validation records `python_checker_runs=failed` and the artifact cannot become `machine_validated`.
 

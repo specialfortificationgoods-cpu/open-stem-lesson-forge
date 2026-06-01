@@ -157,7 +157,7 @@ fn scan_json_strings_with_context(
         }
         Value::Object(object) => {
             for (key, child) in object {
-                scan_key(path, key, findings);
+                scan_key(path, key, child, findings);
                 let child_context = json_child_context(context, key);
                 scan_json_strings_with_context(path, child, &child_context, findings);
             }
@@ -195,9 +195,9 @@ fn json_child_context(parent: &str, key: &str) -> String {
     }
 }
 
-fn scan_key(path: &Path, key: &str, findings: &mut Vec<Finding>) {
+fn scan_key(path: &Path, key: &str, value: &Value, findings: &mut Vec<Finding>) {
     let lower = key.to_ascii_lowercase();
-    if contains_secret_like_key(&lower) {
+    if contains_secret_like_key(&lower, value) {
         findings.push(Finding {
             path: path.to_path_buf(),
             reason: "secret_like_value",
@@ -257,7 +257,7 @@ fn has_windows_drive_path(lower: &str) -> bool {
     })
 }
 
-fn contains_secret_like_key(lower: &str) -> bool {
+fn contains_secret_like_key(lower: &str, value: &Value) -> bool {
     let tokens = lower
         .split(|character: char| !character.is_ascii_alphanumeric())
         .filter(|token| !token.is_empty())
@@ -277,7 +277,7 @@ fn contains_secret_like_key(lower: &str) -> bool {
         || contains_token_sequence(&tokens, &["bearer", "token"])
         || contains_token_sequence(&tokens, &["client", "secret"])
         || contains_token_sequence(&tokens, &["api", "secret"])
-        || key_has_sensitive_suffix(&tokens)
+        || (key_has_sensitive_suffix(&tokens) && value_contains_secret_like_shape(value))
 }
 
 fn contains_token_sequence(tokens: &[&str], sequence: &[&str]) -> bool {
@@ -290,6 +290,20 @@ fn key_has_sensitive_suffix(tokens: &[&str]) -> bool {
     tokens
         .last()
         .is_some_and(|last| matches!(*last, "token" | "tokens" | "secret" | "secrets"))
+}
+
+fn value_contains_secret_like_shape(value: &Value) -> bool {
+    match value {
+        Value::String(text) => text_has_secret_like_shape(text),
+        Value::Array(values) => values.iter().any(value_contains_secret_like_shape),
+        Value::Object(object) => object.values().any(value_contains_secret_like_shape),
+        Value::Number(_) | Value::Bool(_) | Value::Null => false,
+    }
+}
+
+fn text_has_secret_like_shape(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    contains_known_secret_marker(&lower) || assigned_value_looks_secret(&lower)
 }
 
 fn contains_secret_like_value(lower: &str) -> bool {
@@ -1069,7 +1083,7 @@ mod tests {
             "openai_api_key": "redacted value",
             "provider_access_token": "redacted value",
             "anthropic_client_secret": "redacted value",
-            "session_token": "redacted value"
+            "session_token": "abcdef1234567890"
         });
         let mut findings = Vec::new();
 
@@ -1087,7 +1101,13 @@ mod tests {
 
     #[test]
     fn benign_metadata_keys_do_not_fail_as_secret_like() {
-        for key in ["risk_level", "source_request_summary", "sk_units"] {
+        for key in [
+            "risk_level",
+            "source_request_summary",
+            "sk_units",
+            "next_token",
+            "page_tokens",
+        ] {
             let value = serde_json::json!({ key: "ordinary fixture text" });
             let mut findings = Vec::new();
 

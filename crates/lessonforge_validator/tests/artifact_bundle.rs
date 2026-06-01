@@ -709,6 +709,40 @@ def speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:
 }
 
 #[test]
+fn sandboxed_python_checker_rejects_gpe_only_swapped_argument_order() -> Result<(), Box<dyn Error>>
+{
+    let temp = tempfile::tempdir()?;
+    write_valid_bundle(temp.path())?;
+    fs::write(
+        temp.path().join("checker.py"),
+        r#"import math
+
+def kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:
+    return 0.5 * mass_kg * speed_m_per_s ** 2
+
+def gravitational_potential_energy(mass_kg: float, height_m: float, g_m_per_s2: float) -> float:
+    return mass_kg * g_m_per_s2 * height_m
+
+def speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:
+    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)
+"#,
+    )?;
+
+    let report = validate_bundle(
+        temp.path(),
+        &context(CheckerExecutionMode::SandboxedSubprocess),
+    )?;
+
+    assert_eq!(report.status, ValidationReportStatus::Failed);
+    assert!(
+        report
+            .failure_codes()
+            .contains(&"python_checker_runs_failed")
+    );
+    Ok(())
+}
+
+#[test]
 fn checker_static_safety_does_not_accept_required_functions_inside_docstrings()
 -> Result<(), Box<dyn Error>> {
     for checker in [
