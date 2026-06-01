@@ -308,6 +308,11 @@ Side effects:
 
 Response `201`:
 
+The example below is an authorized internal/test response. `internal_state` MUST
+be returned only to authorized actor classes such as admin, system, or test
+scopes. It MUST be omitted from unauthenticated, public, or ordinary requester
+responses. `public_status` is the requester-safe projection.
+
 ```json
 {
   "request": {

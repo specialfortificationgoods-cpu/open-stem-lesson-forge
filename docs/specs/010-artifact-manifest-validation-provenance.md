@@ -232,7 +232,7 @@ Stronger sandbox execution contract:
 - The harness must reject any `--checker` path other than `/bundle/checker.py`.
 - Standard input is empty and closed.
 - Environment is empty except implementation-required deterministic variables such as `PYTHONHASHSEED=0` if the platform permits them under isolated mode.
-- Pass requires harness exit code `0`, harness stdout exactly `OK\n`, and stderr empty.
+- Pass requires harness exit code `0`, empty stdout, and empty stderr.
 - Nonzero exit, timeout, resource kill, unexpected stdout, any stderr, or sandbox violation fails `python_checker_runs`.
 - Raw stdout/stderr is redacted before report construction and is not persisted.
 

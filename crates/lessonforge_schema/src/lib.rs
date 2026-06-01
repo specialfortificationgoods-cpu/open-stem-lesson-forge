@@ -1256,13 +1256,16 @@ fn validate_schema_array(
             }
         }
     }
+    let mut items_start_index = 0usize;
     if let Some(prefix_items) = schema.get("prefixItems").and_then(Value::as_array) {
         for (index, (item, item_schema)) in items.iter().zip(prefix_items).enumerate() {
             let child_path = json_pointer_child(field_path, &index.to_string());
             validate_schema_value(schema_name, root_schema, item_schema, item, &child_path)?;
         }
-    } else if let Some(item_schema) = schema.get("items") {
-        for (index, item) in items.iter().enumerate() {
+        items_start_index = prefix_items.len();
+    }
+    if let Some(item_schema) = schema.get("items") {
+        for (index, item) in items.iter().enumerate().skip(items_start_index) {
             let child_path = json_pointer_child(field_path, &index.to_string());
             validate_schema_value(schema_name, root_schema, item_schema, item, &child_path)?;
         }

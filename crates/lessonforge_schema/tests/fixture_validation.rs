@@ -631,6 +631,44 @@ fn fixture_set_rejects_schema_and_example_drift() -> Result<(), Box<dyn Error>> 
     };
     assert_eq!(empty_any_of_branch_error.code, "schema_compile_failed");
 
+    let prefix_items_plus_items_temp = tempfile::tempdir()?;
+    copy_tree(
+        &workspace_root().join("schemas"),
+        &prefix_items_plus_items_temp.path().join("schemas"),
+    )?;
+    copy_tree(
+        &workspace_root().join("examples").join("mvp"),
+        &prefix_items_plus_items_temp
+            .path()
+            .join("examples")
+            .join("mvp"),
+    )?;
+    let mut schema: Value = serde_json::from_str(&fs::read_to_string(
+        prefix_items_plus_items_temp
+            .path()
+            .join("schemas/proposed_task_graph.schema.json"),
+    )?)?;
+    schema["properties"]["proposed_tasks"]["prefixItems"]
+        .as_array_mut()
+        .ok_or("expected proposed_tasks prefixItems")?
+        .truncate(1);
+    schema["properties"]["proposed_tasks"]["items"] = json!({ "type": "boolean" });
+    fs::write(
+        prefix_items_plus_items_temp
+            .path()
+            .join("schemas/proposed_task_graph.schema.json"),
+        serde_json::to_string_pretty(&schema)?,
+    )?;
+    let prefix_items_plus_items_error =
+        match verify_fixture_set(prefix_items_plus_items_temp.path()) {
+            Ok(_) => return Err("items schema should validate entries after prefixItems".into()),
+            Err(error) => error,
+        };
+    assert_eq!(
+        prefix_items_plus_items_error.code,
+        "fixture_schema_validation_failed"
+    );
+
     let scalar_any_of_branch_temp = tempfile::tempdir()?;
     copy_tree(
         &workspace_root().join("schemas"),

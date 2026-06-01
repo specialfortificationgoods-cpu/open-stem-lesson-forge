@@ -1,10 +1,11 @@
 use std::collections::{BTreeSet, HashSet};
 use std::env;
 use std::fs;
+use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 #[cfg(not(unix))]
 compile_error!("lessonforge_validator currently requires Unix filesystem metadata semantics");
@@ -845,6 +846,7 @@ import sys
 
 resource.setrlimit(resource.RLIMIT_CPU, (1, 1))
 signal.alarm(2)
+resource.setrlimit(resource.RLIMIT_NOFILE, (16, 16))
 sys.path.insert(0, ".")
 import checker
 resource.setrlimit(resource.RLIMIT_NOFILE, (3, 3))
@@ -937,6 +939,162 @@ struct CheckerStaticSafety {
 }
 
 fn checker_static_safety(source: &str) -> CheckerStaticSafety {
+    python_ast_checker_static_safety(source)
+        .unwrap_or_else(|| heuristic_checker_static_safety(source))
+}
+
+fn python_ast_checker_static_safety(source: &str) -> Option<CheckerStaticSafety> {
+    let python3 = find_python3_interpreter()?;
+    let script = r#"
+import ast
+import sys
+
+source = sys.stdin.read()
+blocked_modules = {
+    "subprocess", "socket", "ssl", "http", "urllib", "requests", "pathlib",
+    "pickle", "shelve", "os", "sys", "shutil", "tempfile", "multiprocessing",
+    "threading", "ctypes", "pty", "fcntl", "signal", "gc", "inspect", "dis",
+    "importlib",
+}
+network_modules = {"socket", "ssl", "http", "urllib", "requests"}
+blocked_calls = {
+    "builtins", "open", "file", "__file__", "__name__", "exec", "eval", "compile",
+    "__import__", "input", "breakpoint", "pdb", "help", "resource", "globals",
+    "locals", "vars", "dir", "getattr", "setattr", "delattr", "iter", "range",
+    "print",
+}
+required = {"kinetic_energy", "gravitational_potential_energy", "speed_from_kinetic_energy"}
+safe = True
+no_external_network = True
+try:
+    tree = ast.parse(source)
+except SyntaxError:
+    print("0 0")
+    raise SystemExit(0)
+
+found = set()
+for index, node in enumerate(tree.body):
+    if isinstance(node, ast.Import):
+        names = {alias.name.split(".")[0] for alias in node.names}
+        if names != {"math"} or any(alias.asname for alias in node.names):
+            safe = False
+        if names & blocked_modules:
+            safe = False
+        if names & network_modules:
+            no_external_network = False
+    elif isinstance(node, ast.ImportFrom):
+        module = (node.module or "").split(".")[0]
+        safe = False
+        if module in network_modules:
+            no_external_network = False
+    elif isinstance(node, ast.FunctionDef):
+        if node.name not in required or node.decorator_list:
+            safe = False
+        found.add(node.name)
+    elif index == 0 and isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+        pass
+    else:
+        safe = False
+
+class Visitor(ast.NodeVisitor):
+    def visit_Name(self, node):
+        global safe
+        if "__" in node.id or node.id in blocked_calls or node.id in blocked_modules:
+            safe = False
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node):
+        global safe
+        if "__" in node.attr:
+            safe = False
+        self.generic_visit(node)
+
+    def visit_Import(self, node):
+        global safe, no_external_network
+        names = {alias.name.split(".")[0] for alias in node.names}
+        if names & blocked_modules or any(alias.asname for alias in node.names):
+            safe = False
+        if names & network_modules:
+            no_external_network = False
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node):
+        global safe, no_external_network
+        module = (node.module or "").split(".")[0]
+        if module in blocked_modules:
+            safe = False
+        if module in network_modules:
+            no_external_network = False
+        self.generic_visit(node)
+
+    def visit_Call(self, node):
+        global safe, no_external_network
+        name = ""
+        if isinstance(node.func, ast.Name):
+            name = node.func.id
+        elif isinstance(node.func, ast.Attribute):
+            name = node.func.attr
+            base = node.func.value
+            if isinstance(base, ast.Name) and base.id in network_modules:
+                no_external_network = False
+        if name in blocked_calls:
+            safe = False
+        if name in {"connect", "urlopen"}:
+            safe = False
+            no_external_network = False
+        self.generic_visit(node)
+
+    def visit_JoinedStr(self, node):
+        global safe
+        safe = False
+        self.generic_visit(node)
+
+    def visit_FormattedValue(self, node):
+        global safe
+        safe = False
+        self.generic_visit(node)
+
+    def visit_While(self, node):
+        global safe
+        safe = False
+        self.generic_visit(node)
+
+    def visit_For(self, node):
+        global safe
+        if not isinstance(node.iter, (ast.List, ast.Tuple)) or len(node.iter.elts) > 50:
+            safe = False
+        self.generic_visit(node)
+
+Visitor().visit(tree)
+if not required.issubset(found):
+    safe = False
+print(("1" if safe else "0") + " " + ("1" if no_external_network else "0"))
+"#;
+    let mut child = Command::new(python3)
+        .arg("-I")
+        .arg("-B")
+        .arg("-c")
+        .arg(script)
+        .env_clear()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    child.stdin.as_mut()?.write_all(source.as_bytes()).ok()?;
+    let output = child.wait_with_output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let rendered = String::from_utf8(output.stdout).ok()?;
+    let mut parts = rendered.split_whitespace();
+    Some(CheckerStaticSafety {
+        safe: parts.next()? == "1" && !source.lines().any(unsafe_shebang),
+        no_external_network: parts.next()? == "1",
+    })
+}
+
+fn heuristic_checker_static_safety(source: &str) -> CheckerStaticSafety {
     let code_without_literals = strip_python_comments_and_strings(source);
     let joined_code = collapse_python_line_continuations(&code_without_literals);
     let normalized = joined_code.to_ascii_lowercase();
@@ -1770,4 +1928,70 @@ fn safe_location_is_allowlisted(location: &str) -> bool {
             | "bundle_root"
             | "public_text"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const VALID_CHECKER_SOURCE: &str = r#"
+import math
+
+def kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:
+    return 0.5 * mass_kg * speed_m_per_s ** 2
+
+def gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:
+    return mass_kg * g_m_per_s2 * height_m
+
+def speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:
+    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)
+"#;
+
+    #[test]
+    fn python_ast_static_safety_path_executes_successfully() -> Result<(), String> {
+        let result = python_ast_checker_static_safety(VALID_CHECKER_SOURCE)
+            .ok_or_else(|| "python AST static checker should execute".to_owned())?;
+
+        assert!(result.safe);
+        assert!(result.no_external_network);
+        Ok(())
+    }
+
+    #[test]
+    fn python_ast_static_safety_rejects_blocked_imports_without_fallback() -> Result<(), String> {
+        let result = python_ast_checker_static_safety("import socket\n")
+            .ok_or_else(|| "python AST checker should execute".to_owned())?;
+
+        assert!(!result.safe);
+        assert!(!result.no_external_network);
+        Ok(())
+    }
+
+    #[test]
+    fn python_ast_static_safety_rejects_decorator_import_time_bypass() -> Result<(), String> {
+        let source = r#"
+import math
+
+def dec(f):
+    o = open
+    o("/tmp/lessonforge-unsafe", "w")
+    return f
+
+@dec
+def kinetic_energy(mass_kg: float, speed_m_per_s: float) -> float:
+    return 0.5 * mass_kg * speed_m_per_s ** 2
+
+def gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float) -> float:
+    return mass_kg * g_m_per_s2 * height_m
+
+def speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:
+    return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)
+"#;
+        let result = python_ast_checker_static_safety(source)
+            .ok_or_else(|| "python AST checker should execute".to_owned())?;
+
+        assert!(!result.safe);
+        assert!(result.no_external_network);
+        Ok(())
+    }
 }
