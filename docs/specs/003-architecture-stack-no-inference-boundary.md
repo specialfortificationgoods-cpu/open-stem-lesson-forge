@@ -232,6 +232,20 @@ Generated-code execution must not run inside the central API process. If `checke
 
 If this isolation is not implemented for the MVP, `checker.py` execution must be disabled and the validator may perform only static checks until `010-artifact-manifest-validation-provenance.md` defines the execution boundary.
 
+For the first local Rust MVP gate, a reviewed constrained-subprocess validator
+profile may stand in for the stronger future OS sandbox only for the closed MVP
+checker contract. That profile must run outside the central API process, pass
+conservative static checks before import, use isolated Python with empty
+environment and empty stdin, enforce wall-clock/CPU limits before import, deny
+new file descriptors before invoking checker functions, and reject any stdout,
+stderr, nonzero exit, static network/file/process marker, top-level side effect,
+loop escape, or checker-contract mismatch.
+
+This constrained profile is not sufficient for arbitrary generated code beyond
+the closed MVP checker contract. A later non-MVP execution profile must add a
+stronger OS sandbox, container, or equivalent filesystem/network isolation before
+expanding executable artifact scope.
+
 ### `lessonforge_schema`
 
 Owns schema loading and validation helpers:

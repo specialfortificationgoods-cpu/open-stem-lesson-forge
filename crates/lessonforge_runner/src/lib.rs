@@ -709,24 +709,25 @@ pub fn write_dummy_artifact_bundle(
     let workspace_root = Path::new(&validated.config.runner.workspace_root);
     reject_existing_symlink_workspace_descendants(workspace_root, output_root)?;
 
-    fs::create_dir_all(output_root).map_err(|_| RunnerOutputError::OutputUnavailable)?;
-    reject_existing_symlink_workspace_descendants(workspace_root, output_root)?;
-    for (name, bytes) in dummy_bundle_files(context)? {
-        let relative_path = Path::new(name);
-        reject_unsafe_path_components(relative_path)?;
-        let path = output_root.join(relative_path);
-        reject_existing_symlink_workspace_descendants(workspace_root, &path)?;
-        write_new_file_without_following_symlinks(&path, &bytes)?;
+    let staging_root = output_root.with_extension("tmp");
+    reject_existing_symlink_workspace_descendants(workspace_root, &staging_root)?;
+    if output_root.exists() || staging_root.exists() {
+        return Err(RunnerOutputError::OutputUnavailable);
     }
-    let file_digests = compute_runner_file_digests(output_root)?;
-    let bundle_digest = compute_runner_bundle_digest(&file_digests, context)?;
-    let file_digest_map = runner_digest_map(&file_digests);
-    let runner_self_test_report = sandbox_unavailable_self_test_report(
-        validated,
-        context,
-        file_digest_map.clone(),
-        bundle_digest.clone(),
-    )?;
+
+    let staged = stage_dummy_artifact_bundle(validated, context, &staging_root);
+    let staged = match staged {
+        Ok(staged) => staged,
+        Err(error) => {
+            cleanup_staging_dir(&staging_root);
+            return Err(error);
+        }
+    };
+    if fs::rename(&staging_root, output_root).is_err() {
+        cleanup_staging_dir(&staging_root);
+        return Err(RunnerOutputError::OutputUnavailable);
+    }
+    reject_existing_symlink_workspace_descendants(workspace_root, output_root)?;
     Ok(GenerationOutput {
         kind: "generation_output_v1".to_owned(),
         artifact_bundle_reference: ArtifactBundleReference {
@@ -754,11 +755,52 @@ pub fn write_dummy_artifact_bundle(
             },
         },
         provenance: GenerationProvenance {
-            file_digests: file_digest_map,
-            bundle_digest,
-            runner_self_test_report,
+            file_digests: staged.file_digest_map,
+            bundle_digest: staged.bundle_digest,
+            runner_self_test_report: staged.runner_self_test_report,
         },
     })
+}
+
+struct StagedDummyArtifactBundle {
+    bundle_digest: String,
+    file_digest_map: BTreeMap<String, String>,
+    runner_self_test_report: RunnerSelfTestReport,
+}
+
+fn stage_dummy_artifact_bundle(
+    validated: &ValidatedRunnerConfig,
+    context: &DummyGenerationContext,
+    staging_root: &Path,
+) -> Result<StagedDummyArtifactBundle, RunnerOutputError> {
+    let workspace_root = Path::new(&validated.config.runner.workspace_root);
+    fs::create_dir_all(staging_root).map_err(|_| RunnerOutputError::OutputUnavailable)?;
+    reject_existing_symlink_workspace_descendants(workspace_root, staging_root)?;
+    for (name, bytes) in dummy_bundle_files(context)? {
+        let relative_path = Path::new(name);
+        reject_unsafe_path_components(relative_path)?;
+        let path = staging_root.join(relative_path);
+        reject_existing_symlink_workspace_descendants(workspace_root, &path)?;
+        write_new_file_without_following_symlinks(&path, &bytes)?;
+    }
+    let file_digests = compute_runner_file_digests(staging_root)?;
+    let bundle_digest = compute_runner_bundle_digest(&file_digests, context)?;
+    let file_digest_map = runner_digest_map(&file_digests);
+    let runner_self_test_report = sandbox_unavailable_self_test_report(
+        validated,
+        context,
+        file_digest_map.clone(),
+        bundle_digest.clone(),
+    )?;
+    Ok(StagedDummyArtifactBundle {
+        bundle_digest,
+        file_digest_map,
+        runner_self_test_report,
+    })
+}
+
+fn cleanup_staging_dir(staging_root: &Path) {
+    let _ = fs::remove_dir_all(staging_root);
 }
 
 fn write_new_file_without_following_symlinks(

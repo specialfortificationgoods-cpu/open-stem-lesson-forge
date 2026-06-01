@@ -415,9 +415,13 @@ pub enum RepairContinuationSafeReason {
     OperatorBudgetExhaustedContinueElsewhere,
     ProviderUnavailableContinueElsewhere,
     SandboxUnavailableContinueElsewhere,
+    QuotaExhaustedStop,
+    ProviderUnavailableStop,
+    SandboxUnavailableStop,
     LoopSuspectedStop,
     MaliciousTaskSuspectedStop,
     OperatorBudgetStop,
+    LocalPolicyRefusedStop,
     CuratorQuarantine,
     HumanTriageRequired,
 }
@@ -599,7 +603,7 @@ impl ContinuationContext {
                     RepairContinuationSafeReason::QuotaExhaustedContinueElsewhere
                 ) | (
                     ContinuationOutcome::StopExhaustedAttempts,
-                    RepairContinuationSafeReason::OperatorBudgetStop
+                    RepairContinuationSafeReason::QuotaExhaustedStop
                 ) | (
                     ContinuationOutcome::MarkRepairBugForHumanTriage,
                     RepairContinuationSafeReason::HumanTriageRequired
@@ -625,7 +629,7 @@ impl ContinuationContext {
                     RepairContinuationSafeReason::ProviderUnavailableContinueElsewhere
                 ) | (
                     ContinuationOutcome::StopExhaustedAttempts,
-                    RepairContinuationSafeReason::OperatorBudgetStop
+                    RepairContinuationSafeReason::ProviderUnavailableStop
                 ) | (
                     ContinuationOutcome::MarkRepairBugForHumanTriage,
                     RepairContinuationSafeReason::HumanTriageRequired
@@ -638,7 +642,7 @@ impl ContinuationContext {
                     RepairContinuationSafeReason::SandboxUnavailableContinueElsewhere
                 ) | (
                     ContinuationOutcome::StopExhaustedAttempts,
-                    RepairContinuationSafeReason::OperatorBudgetStop
+                    RepairContinuationSafeReason::SandboxUnavailableStop
                 ) | (
                     ContinuationOutcome::MarkRepairBugForHumanTriage,
                     RepairContinuationSafeReason::HumanTriageRequired
@@ -668,7 +672,7 @@ impl ContinuationContext {
                 (decision.outcome, decision.safe_reason_code),
                 (
                     ContinuationOutcome::StopPolicyRefused,
-                    RepairContinuationSafeReason::OperatorBudgetStop
+                    RepairContinuationSafeReason::LocalPolicyRefusedStop
                 ) | (
                     ContinuationOutcome::MarkRepairBugForHumanTriage,
                     RepairContinuationSafeReason::HumanTriageRequired

@@ -353,9 +353,13 @@ Allowed `safe_reason_code`:
 - `operator_budget_exhausted_continue_elsewhere`
 - `provider_unavailable_continue_elsewhere`
 - `sandbox_unavailable_continue_elsewhere`
+- `quota_exhausted_stop`
+- `provider_unavailable_stop`
+- `sandbox_unavailable_stop`
 - `loop_suspected_stop`
 - `malicious_task_suspected_stop`
 - `operator_budget_stop`
+- `local_policy_refused_stop`
 - `curator_quarantine`
 - `human_triage_required`
 

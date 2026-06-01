@@ -408,10 +408,11 @@ fn validate_proposed_task_graph_inner(
     collect_policy_errors(&submitted, &context, &mut errors);
     if errors.is_empty() {
         proposal.state = ProposedTaskGraphState::SchemaPolicyValidated;
-        proposal.plan_verification_task_id = Some(context.plan_verification_task_id.clone());
         proposal.mvp_policy_fingerprint = Some(mvp_policy_fingerprint(&proposal.tasks));
         let plan_verification_task =
             plan_verification_task_for(&proposal, &submitted, &context, ledger)?;
+        proposal.plan_verification_task_id =
+            Some(plan_verification_task.plan_verification_task_id.clone());
         return Ok(GraphValidationOutcome {
             decision: ValidationDecision::Accepted,
             proposal: proposal.clone(),

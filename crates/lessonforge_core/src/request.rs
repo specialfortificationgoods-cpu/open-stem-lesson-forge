@@ -128,6 +128,7 @@ pub struct RequestModerationContext {
     pub claim_token_hash: String,
     pub scope_id: String,
     pub lease_active: bool,
+    pub lease_holder_actor_id: ActorId,
     pub actor_scope_matches: bool,
     pub actor_can_moderate: bool,
 }
@@ -242,6 +243,11 @@ pub fn apply_moderation_report(
             reason: "moderation_context_not_authorized",
         });
     }
+    if context.moderator_actor_id != context.lease_holder_actor_id {
+        return Err(RequestWorkflowError::ModerationRejected {
+            reason: "moderation_actor_not_lease_holder",
+        });
+    }
     if context.request_id != request.request_id
         || context.scope_id != request.scope_id
         || report.request_id != request.request_id
@@ -315,7 +321,7 @@ fn reject_unknown_fields<'a>(
     if keys.find(|key| !allowed.contains(key)).is_some() {
         return Err(RequestWorkflowError::Rejected {
             reason: IntakeRejectionReason::UnknownField,
-            field_path: "/unknown_field".to_owned(),
+            field_path: "/".to_owned(),
         });
     }
     Ok(())

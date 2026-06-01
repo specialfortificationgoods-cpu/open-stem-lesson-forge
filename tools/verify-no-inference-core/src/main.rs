@@ -651,7 +651,8 @@ fn scan_path(path: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
 fn should_scan_file(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| SCANNED_EXTENSIONS.contains(&extension))
+        .map(|extension| extension.to_ascii_lowercase())
+        .is_some_and(|extension| SCANNED_EXTENSIONS.contains(&extension.as_str()))
 }
 
 fn scan_file(path: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
@@ -900,5 +901,12 @@ mod tests {
             "no_arbitrary_prompt_override",
             "prompt"
         ));
+    }
+
+    #[test]
+    fn scanned_extensions_are_case_insensitive() {
+        assert!(should_scan_file(Path::new("schema.SQL")));
+        assert!(should_scan_file(Path::new("config.TOML")));
+        assert!(!should_scan_file(Path::new("notes.txt")));
     }
 }

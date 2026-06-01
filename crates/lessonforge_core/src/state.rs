@@ -424,6 +424,7 @@ impl RequestModerationTaskState {
     pub fn transition(self, action: PlanningTaskTransition) -> Result<Self, TransitionError> {
         match (self, action) {
             (Self::Open, PlanningTaskTransition::Claim) => Ok(Self::Claimed),
+            (Self::Claimed, PlanningTaskTransition::LeaseExpiredOrReleased) => Ok(Self::Open),
             (Self::Claimed, PlanningTaskTransition::Complete) => Ok(Self::Completed),
             (Self::Open | Self::Claimed, PlanningTaskTransition::Cancel) => Ok(Self::Cancelled),
             _ => Err(transition_error(

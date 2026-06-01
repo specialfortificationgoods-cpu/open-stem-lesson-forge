@@ -454,13 +454,13 @@ fn run_full_mvp_smoke(root: &Path) -> Result<(), String> {
             generation_execution_policy: generation_context.execution_policy,
             runner_actor_id: generation_context.runner_actor_id,
             validator_version: "mvp-e2e".to_owned(),
-            execution_mode: CheckerExecutionMode::StaticOnly,
+            execution_mode: CheckerExecutionMode::SandboxedSubprocess,
             submitted_digests: None,
         },
     )
     .map_err(|_| "artifact_validation_failed")?;
-    if report.status == ValidationReportStatus::Failed {
-        return Err("artifact_validation_report_failed".to_owned());
+    if !report.opens_machine_validation() || report.status != ValidationReportStatus::Passed {
+        return Err("artifact_validation_not_machine_validated".to_owned());
     }
     Ok(())
 }

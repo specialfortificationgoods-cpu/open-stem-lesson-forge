@@ -889,6 +889,14 @@ fn review_submission_rejects_quarantined_or_superseded_parent_context() -> Resul
             proposal_state: ProposedTaskGraphState::VerifiedForMvpPromotion,
             ..review_claim_context(reviewer.clone())?
         },
+        ReviewClaimContext {
+            trusted_validation_passed: false,
+            ..review_claim_context(reviewer.clone())?
+        },
+        ReviewClaimContext {
+            open_blocking_findings_elsewhere: true,
+            ..review_claim_context(reviewer.clone())?
+        },
     ] {
         let result = submit_review(
             create_review_task(review_context()?)?,

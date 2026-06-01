@@ -3,6 +3,7 @@ use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
+use std::process::Command;
 
 #[cfg(not(unix))]
 compile_error!("lessonforge_validator currently requires Unix filesystem metadata semantics");
@@ -37,6 +38,7 @@ pub fn crate_boundary() -> &'static str {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CheckerExecutionMode {
     StaticOnly,
+    SandboxedSubprocess,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -298,7 +300,30 @@ pub fn validate_bundle(
     }
     let manifest = validate_manifest(bundle_root, &bundle, context, &mut builder);
     validate_markdown(bundle_root, &bundle, &manifest, &mut builder);
-    validate_checker(bundle_root, &bundle, context.execution_mode, &mut builder);
+    let execution_prerequisites_passed = builder.all_passed(&[
+        ValidationCheckName::BundleShape,
+        ValidationCheckName::PathNormalization,
+        ValidationCheckName::ManifestSchema,
+        ValidationCheckName::RequiredFiles,
+        ValidationCheckName::FileSizeLimits,
+        ValidationCheckName::Utf8Text,
+        ValidationCheckName::LicenseMetadata,
+        ValidationCheckName::AiAssistanceDisclosure,
+        ValidationCheckName::ManifestLineage,
+        ValidationCheckName::ContentsMatchFiles,
+        ValidationCheckName::ArtifactDigestIntegrity,
+        ValidationCheckName::MarkdownSafety,
+        ValidationCheckName::ObviousPiiHeuristic,
+        ValidationCheckName::ObviousInappropriateContentHeuristic,
+        ValidationCheckName::SecretLikeValueHeuristic,
+    ]);
+    validate_checker(
+        bundle_root,
+        &bundle,
+        context.execution_mode,
+        execution_prerequisites_passed,
+        &mut builder,
+    );
     Ok(builder.finish(authoritative_digests))
 }
 
@@ -430,8 +455,35 @@ impl ReportBuilder {
         }
     }
 
+    fn all_passed(&self, checks: &[ValidationCheckName]) -> bool {
+        checks.iter().all(|check| {
+            self.report
+                .checks
+                .iter()
+                .any(|record| record.check == *check && record.status == CheckStatus::Passed)
+        })
+    }
+
     fn finish(mut self, authoritative_digests: ArtifactDigestSet) -> ArtifactValidationReport {
         self.report.authoritative_digests = authoritative_digests;
+        self.refresh_failures_and_status();
+        if public_provenance_is_allowlisted(&self.report.public_provenance()) {
+            self.set(
+                ValidationCheckName::PublicProvenanceAllowlist,
+                CheckStatus::Passed,
+                "public_provenance_allowlist_passed",
+            );
+        } else {
+            self.fail(
+                ValidationCheckName::PublicProvenanceAllowlist,
+                "public_provenance_allowlist_failed",
+            );
+        }
+        self.refresh_failures_and_status();
+        self.report
+    }
+
+    fn refresh_failures_and_status(&mut self) {
         self.report.failures = self
             .report
             .checks
@@ -456,8 +508,16 @@ impl ReportBuilder {
         } else {
             ValidationReportStatus::Passed
         };
-        self.report
     }
+}
+
+fn public_provenance_is_allowlisted(provenance: &PublicProvenance) -> bool {
+    provenance.generated_by_category == "runner_assisted"
+        && provenance.validation_category == VALIDATOR_NAME
+        && matches!(
+            provenance.validation_state_summary.as_str(),
+            "trusted_passed" | "trusted_failed" | "trusted_incomplete_static_only"
+        )
 }
 
 fn inspect_bundle(bundle_root: &Path, builder: &mut ReportBuilder) -> Option<InspectedBundle> {
@@ -694,8 +754,11 @@ fn validate_checker(
     bundle_root: &Path,
     bundle: &Option<InspectedBundle>,
     execution_mode: CheckerExecutionMode,
+    execution_prerequisites_passed: bool,
     builder: &mut ReportBuilder,
 ) {
+    let mut checker_static_ok = false;
+    let mut checker_no_network_ok = false;
     let has_checker = bundle
         .as_ref()
         .is_some_and(|bundle| bundle.text_files.contains("checker.py"));
@@ -709,9 +772,25 @@ fn validate_checker(
                 ValidationCheckName::NoExternalNetworkStatic,
                 "no_external_network_static_failed",
             );
+            match execution_mode {
+                CheckerExecutionMode::StaticOnly => {
+                    builder.skip_static_only(
+                        ValidationCheckName::PythonCheckerRuns,
+                        "python_checker_runs_skipped_static_only",
+                    );
+                }
+                CheckerExecutionMode::SandboxedSubprocess => {
+                    builder.fail(
+                        ValidationCheckName::PythonCheckerRuns,
+                        "python_checker_runs_failed",
+                    );
+                }
+            }
             return;
         };
         let safety = checker_static_safety(&checker);
+        checker_static_ok = safety.safe;
+        checker_no_network_ok = safety.no_external_network;
         if !safety.safe {
             builder.fail(
                 ValidationCheckName::PythonCheckerStaticSafety,
@@ -733,7 +812,67 @@ fn validate_checker(
                 "python_checker_runs_skipped_static_only",
             );
         }
+        CheckerExecutionMode::SandboxedSubprocess => {
+            if !has_checker
+                || !execution_prerequisites_passed
+                || !checker_static_ok
+                || !checker_no_network_ok
+                || !run_python_checker(bundle_root)
+            {
+                builder.fail(
+                    ValidationCheckName::PythonCheckerRuns,
+                    "python_checker_runs_failed",
+                );
+            }
+        }
     }
+}
+
+fn run_python_checker(bundle_root: &Path) -> bool {
+    let Ok(bundle_root) = bundle_root.canonicalize() else {
+        return false;
+    };
+    let harness = r#"
+import math
+import resource
+import signal
+import sys
+
+resource.setrlimit(resource.RLIMIT_CPU, (1, 1))
+signal.alarm(2)
+sys.path.insert(0, ".")
+import checker
+resource.setrlimit(resource.RLIMIT_NOFILE, (3, 3))
+
+def close(actual, expected):
+    return math.isfinite(actual) and abs(actual - expected) <= 1e-9
+
+checks = [
+    close(checker.kinetic_energy(2.0, 3.0), 9.0),
+    (
+        close(checker.gravitational_potential_energy(2.0, 9.8, 5.0), 98.0)
+        or close(checker.gravitational_potential_energy(2.0, 5.0, 9.8), 98.0)
+    ),
+    (
+        close(checker.speed_from_kinetic_energy(9.0, 2.0), 3.0)
+        or close(checker.speed_from_kinetic_energy(2.0, 9.0), 3.0)
+    ),
+]
+if not all(checks):
+    raise SystemExit(1)
+"#;
+    let Ok(output) = Command::new("python3")
+        .arg("-I")
+        .arg("-B")
+        .arg("-c")
+        .arg(harness)
+        .current_dir(bundle_root)
+        .env_clear()
+        .output()
+    else {
+        return false;
+    };
+    output.status.success() && output.stdout.is_empty() && output.stderr.is_empty()
 }
 
 fn manifest_schema_values_are_valid(manifest: &ArtifactManifest) -> bool {

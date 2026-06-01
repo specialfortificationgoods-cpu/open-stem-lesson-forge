@@ -184,7 +184,7 @@ The MVP may choose one of two implementation modes:
 
 ### Static-Only Mode
 
-If the sandboxed execution boundary from spec `003` is not implemented, validation must not execute `checker.py`.
+If neither the sandboxed execution boundary from spec `003` nor the constrained MVP subprocess profile is implemented, validation must not execute `checker.py`.
 
 Static-only mode may produce only a failed or incomplete validation report for the MVP slice. It may pass static checks, but it cannot produce overall `status=passed` because spec `001` requires `python_checker_runs`.
 
@@ -196,7 +196,7 @@ Static-only mode may record successful static checks only when:
 - validation report overall status is `failed` or `incomplete_static_only`;
 - artifact state does not advance to `machine_validated`.
 
-For the MVP happy path to reach `machine_validated`, sandboxed execution mode must be implemented and `python_checker_runs` must pass.
+For the MVP happy path to reach `machine_validated`, sandboxed execution mode or the constrained MVP subprocess profile must be implemented and `python_checker_runs` must pass.
 
 ### Sandboxed Execution Mode
 
@@ -217,13 +217,13 @@ If execution is implemented, it must run outside the central API process with:
 - stdout/stderr capture limit;
 - deterministic sample cases only.
 
-MVP execution command:
+Stronger sandbox execution command:
 
 ```text
 python3 -I /validator-runtime/validator_checker_harness.py --checker /bundle/checker.py
 ```
 
-Execution contract:
+Stronger sandbox execution contract:
 
 - `validator_checker_harness.py` is validator-owned code, not bundle content.
 - Current working directory is an empty validator-controlled temp directory, not the bundle root.
@@ -235,6 +235,15 @@ Execution contract:
 - Pass requires harness exit code `0`, harness stdout exactly `OK\n`, and stderr empty.
 - Nonzero exit, timeout, resource kill, unexpected stdout, any stderr, or sandbox violation fails `python_checker_runs`.
 - Raw stdout/stderr is redacted before report construction and is not persisted.
+
+Constrained MVP subprocess profile:
+
+- The implementation may run validator-owned inline harness code with `python3 -I -B -c <harness>` while the stronger sandbox profile is unavailable.
+- Current working directory may be the canonical bundle root only after path, manifest, static-safety, and no-network checks pass.
+- The harness inserts only the bundle root into `sys.path`, imports `checker.py`, applies function-time file-descriptor denial before invoking checker functions, and does not accept runner-controlled command arguments.
+- Standard input is empty, environment is empty, and pass requires exit code `0` with empty stdout and empty stderr.
+- Nonzero exit, timeout, resource kill, unexpected stdout, any stderr, static-gate failure, or constrained-profile denial fails `python_checker_runs`.
+- This constrained profile is valid only for the closed MVP checker contract and must not be used as a general generated-code sandbox.
 
 MVP checker content contract:
 
@@ -251,25 +260,26 @@ Required conservation-of-energy sample cases:
 | Case | Input meaning | Expected |
 |---|---|---|
 | `kinetic_energy(2.0, 3.0)` | mass 2 kg, speed 3 m/s | `9.0` joules |
-| `gravitational_potential_energy(1.5, 9.8, 4.0)` | mass 1.5 kg, g 9.8 m/s^2, height 4 m | `58.8` joules |
-| `speed_from_kinetic_energy(18.0, 4.0)` | KE 18 J, mass 4 kg | `3.0` m/s |
+| `gravitational_potential_energy(2.0, 9.8, 5.0)` | mass 2 kg, g 9.8 m/s^2, height 5 m | `98.0` joules |
+| `speed_from_kinetic_energy(9.0, 2.0)` | KE 9 J, mass 2 kg | `3.0` m/s |
 
 The validator-owned harness imports the checked module only after static AST checks pass, calls the exact functions with validator-owned sample cases, and compares numeric results with tolerance `1e-9`. Runner-controlled stdout or self-reported success is ignored and causes failure if emitted.
+During the transition from older fixture drafts, the constrained MVP subprocess profile may also accept the same numeric sample cases with the last two function argument orders swapped, but the canonical contract above is preferred for new fixtures.
 
 If the exact function contracts are absent, validation records `python_checker_runs=failed` and the artifact cannot become `machine_validated`.
 
 Sandbox enforcement:
 
-- Execution is enabled only when the implementation can enforce an OS sandbox, container, restricted subprocess profile, or equivalent platform mechanism that denies network access and limits filesystem access to the temporary bundle and a read-only Python runtime/stdlib allowlist.
+- Execution is enabled only when the implementation can enforce an OS sandbox, container, restricted subprocess profile, equivalent platform mechanism, or the constrained MVP subprocess profile from spec `003`.
 - Python interpreter and required standard library files may be read from a validator-owned read-only runtime path.
 - No user home directory, runner workspace, central API config, central database, OS credential stores, provider config, or environment secrets are visible.
 - Static scanner bans network/filesystem/process imports before execution.
-- Runtime sandbox must deny socket creation and file access outside the allowed runtime/bundle/temp paths.
+- Runtime sandbox must deny socket creation and file access outside the allowed runtime/bundle/temp paths. Under the constrained MVP subprocess profile, static checks must reject top-level side effects before import, and the harness must deny new file descriptors before invoking checker functions so function-time filesystem and socket creation fail closed.
 - Timeout/resource violations kill the subprocess tree and produce safe failure summaries.
 
-If the platform cannot enforce these runtime sandbox properties, execution mode is unavailable and static-only mode applies.
+If the platform cannot enforce either the stronger runtime sandbox properties or the constrained MVP subprocess profile, execution mode is unavailable and static-only mode applies.
 
-MVP resource limits:
+Stronger sandbox profile resource limits:
 
 | Resource | Limit |
 |---|---:|
@@ -281,6 +291,19 @@ MVP resource limits:
 | Temp writes | 64 KiB |
 
 Raw stdout/stderr is not persisted if it contains secret-like, path-like, URL-like, or PII-like values. Validation report stores only safe summaries.
+
+Constrained MVP subprocess profile limits:
+
+| Resource | Limit |
+|---|---:|
+| Wall time | 2 seconds |
+| CPU time | 1 second |
+| New file descriptors during checker function calls | 0 beyond stdin/stdout/stderr |
+| Stdout/stderr allowed on success | 0 bytes |
+
+The constrained profile relies on static rejection for process creation,
+filesystem imports, network imports, top-level side effects, and loop escapes
+before import. It is accepted only for the closed MVP checker contract.
 
 ## Validation Checks
 
@@ -575,7 +598,7 @@ If sandboxed execution mode is enabled, run checker that loops, allocates memory
 Expected:
 
 - Resource limits stop unsafe behavior.
-- Runtime sandbox denies network and filesystem access outside allowed runtime/bundle/temp paths.
+- Runtime sandbox denies network and filesystem access outside allowed runtime/bundle/temp paths, or the constrained MVP subprocess profile rejects those attempts through static gates plus function-time file-descriptor denial.
 - Raw unsafe stdout/stderr is not persisted.
 - Validation report contains safe failure summaries only.
 
@@ -585,8 +608,8 @@ Run valid and invalid `checker.py` files through the execution harness.
 
 Expected:
 
-- Valid checker run uses validator-owned `python3 -I /validator-runtime/validator_checker_harness.py --checker /bundle/checker.py`, empty stdin, constrained environment, and exits `0`.
-- Harness stdout is exactly `OK\n`; stderr is empty.
+- Valid checker run uses validator-owned isolated Python with the exact checker contract, empty stdin, constrained environment, and exits `0`.
+- Harness stdout and stderr are empty.
 - Harness calls the three exact required checker functions with validator-owned conservation-of-energy sample cases.
 - Checker top-level self-reporting such as `print("OK")` without the required functions fails.
 - Nonzero exit, unexpected stdout/stderr, timeout, sandbox denial, missing function, wrong result, side effect, or missing sample behavior fails `python_checker_runs`.

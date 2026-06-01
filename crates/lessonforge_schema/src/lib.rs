@@ -13,6 +13,8 @@ const PLAN_VERIFICATION_SCHEMA: &str = "plan_verification.schema.json";
 const ARTIFACT_MANIFEST_SCHEMA: &str = "artifact_manifest.schema.json";
 const PLAN_VERIFICATION_SAFE_FINDING_MESSAGE_PATTERN: &str = "^(?!.*(?:://|@|[Ss][Ee][Cc][Rr][Ee][Tt]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Cc][Oo][Oo][Kk][Ii][Ee]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Tt][Uu][Dd][Ee][Nn][Tt] [Rr][Ee][Cc][Oo][Rr][Dd]|[Ss][Tt][Uu][Dd][Ee][Nn][Tt] [Gg][Rr][Aa][Dd][Ee]|[Ss][Tt][Uu][Dd][Ee][Nn][Tt] [Pp][Ll][Aa][Cc][Ee][Mm][Ee][Nn][Tt]|[Ss][Tt][Uu][Dd][Ee][Nn][Tt] [Pp][Rr][Oo][Ff][Ii][Ll][Ee]|[Pp][Ll][Aa][Cc][Ee][Mm][Ee][Nn][Tt] [Dd][Ee][Cc][Ii][Ss][Ii][Oo][Nn]|[Dd][Ii][Ss][Cc][Ii][Pp][Ll][Ii][Nn][Aa][Rr][Yy] [Rr][Ee][Cc][Oo][Rr][Dd]|[Dd][Ii][Ss][Cc][Ii][Pp][Ll][Ii][Nn][Aa][Rr][Yy] [Aa][Cc][Tt][Ii][Oo][Nn]|/Users/|/home/|/etc/|/private/|/var/|/tmp/|C:\\\\|\\.\\./|~/|[Ss][Ss][Hh]/|[Hh][Uu][Mm][Aa][Nn] [Aa][Pp][Pp][Rr][Oo][Vv][Aa][Ll]|[Hh][Uu][Mm][Aa][Nn] [Aa][Pp][Pp][Rr][Oo][Vv][Ee][Dd]|[Pp][Ee][Ee][Rr] [Rr][Ee][Vv][Ii][Ee][Ww][Ee][Dd]|[Pp][Ee][Ee][Rr]_[Rr][Ee][Vv][Ii][Ee][Ww][Ee][Dd]|[Pp][Rr][Oo][Mm][Oo][Tt][Ee]|[Pp][Rr][Oo][Mm][Oo][Tt][Ii][Oo][Nn]|[Pp][Uu][Bb][Ll][Ii][Ss][Hh]|[Pp][Uu][Bb][Ll][Ii][Cc][Aa][Tt][Ii][Oo][Nn]|[Ss][Tt][Aa][Tt][Ee] [Oo][Vv][Ee][Rr][Rr][Ii][Dd][Ee]|[Oo][Vv][Ee][Rr][Rr][Ii][Dd][Ee] [Ss][Tt][Aa][Tt][Ee]|[Aa][Cc][Cc][Ee][Pp][Tt][Ee][Dd] [Vv][Ee][Rr][Ii][Ff][Ii][Cc][Aa][Tt][Ii][Oo][Nn])).{1,500}$";
 
+// Spec 010 keeps python_checker_runs in the proposed validation plan; static
+// validation reports it as skipped_static_only, while sandboxed mode must run it.
 const VALIDATION_CHECKS: &[&str] = &[
     "manifest_schema",
     "required_files",

@@ -251,6 +251,21 @@ fn forged_or_stale_moderation_evidence_cannot_unlock_planning() -> Result<(), Bo
     stale_context.lease_active = false;
     let report = allow_report(&intake.request.request_id, &intake.moderation_task.task_id)?;
     assert!(apply_moderation_report(&intake.request, stale_context, report).is_err());
+
+    let mut wrong_actor_context =
+        moderation_context(&intake.request.request_id, &intake.moderation_task.task_id)?;
+    wrong_actor_context.lease_holder_actor_id = ActorId::try_from("actor_other_moderator_001")?;
+    let report = allow_report(&intake.request.request_id, &intake.moderation_task.task_id)?;
+    assert_eq!(
+        apply_moderation_report(&intake.request, wrong_actor_context, report)
+            .map(|_| "unexpected_ok")
+            .unwrap_or_else(|error| match error {
+                lessonforge_core::request::RequestWorkflowError::ModerationRejected { reason } =>
+                    reason,
+                _ => "unexpected_error",
+            }),
+        "moderation_actor_not_lease_holder"
+    );
     Ok(())
 }
 
@@ -413,7 +428,7 @@ fn unknown_request_field_rejection_does_not_echo_raw_field_name() -> Result<(), 
         })
     ));
     let rendered = format!("{error:?}");
-    assert!(rendered.contains("/unknown_field"));
+    assert!(rendered.contains("field_path: \"/\""));
     assert!(!rendered.contains("sk-secret-/Users/alice"));
     Ok(())
 }
@@ -505,7 +520,7 @@ fn intake_rejections_include_safe_field_paths() -> Result<(), Box<dyn Error>> {
     else {
         return Err("unknown field should reject with field path".into());
     };
-    assert_eq!(field_path, "/unknown_field");
+    assert_eq!(field_path, "/");
 
     let mut payload = valid_request_payload();
     payload["constraints"] = json!(["email teacher@example.com"]);
@@ -574,6 +589,7 @@ fn moderation_context(
         ),
         scope_id: "scope_default".to_owned(),
         lease_active: true,
+        lease_holder_actor_id: ActorId::try_from("actor_dummy_moderator_001")?,
         actor_scope_matches: true,
         actor_can_moderate: true,
     })

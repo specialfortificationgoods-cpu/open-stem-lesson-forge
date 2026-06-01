@@ -99,6 +99,8 @@ impl DeterministicWorkflow {
         lease_id: LeaseId,
         actor_id: ActorId,
         claim_token: &str,
+        actor_scope_matches: bool,
+        actor_can_moderate: bool,
     ) -> Result<(), RequestWorkflowError> {
         let Some(request) = &self.request else {
             return Err(RequestWorkflowError::ModerationRejected {
@@ -141,6 +143,8 @@ impl DeterministicWorkflow {
             lease_id,
             actor_id,
             claim_token_hash: Lease::claim_token_hash(claim_token),
+            actor_scope_matches,
+            actor_can_moderate,
             active: true,
         });
         Ok(())
@@ -182,8 +186,9 @@ impl DeterministicWorkflow {
             claim_token_hash: claim.claim_token_hash.clone(),
             scope_id: request.scope_id.clone(),
             lease_active: claim.active,
-            actor_scope_matches: true,
-            actor_can_moderate: true,
+            lease_holder_actor_id: claim.actor_id.clone(),
+            actor_scope_matches: claim.actor_scope_matches,
+            actor_can_moderate: claim.actor_can_moderate,
         };
         if Lease::claim_token_hash(&report.claim_token) != claim.claim_token_hash {
             return Err(RequestWorkflowError::ModerationRejected {
@@ -603,6 +608,8 @@ struct ModerationClaim {
     lease_id: LeaseId,
     actor_id: ActorId,
     claim_token_hash: String,
+    actor_scope_matches: bool,
+    actor_can_moderate: bool,
     active: bool,
 }
 

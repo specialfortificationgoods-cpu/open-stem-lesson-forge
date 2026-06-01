@@ -65,6 +65,7 @@ fn dummy_generator_writes_valid_bundle_and_authoritative_digests() -> Result<(),
     let context = DummyGenerationContext::mvp_fixture_for_workspace(temp.path());
     let output_dir = context.output_dir();
     let output = write_dummy_artifact_bundle(&generator, &context, &output_dir)?;
+    assert!(!output_dir.with_extension("tmp").exists());
 
     assert_eq!(output.kind, "generation_output_v1");
     assert_eq!(

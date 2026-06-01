@@ -43,6 +43,8 @@ fn api_workflow_composes_intake_and_moderation_deterministically() -> Result<(),
         LeaseId::try_from("lease_rmoderation_energy_001")?,
         ActorId::try_from("actor_moderator_001")?,
         "moderation-claim-token",
+        true,
+        true,
     )?;
     let debug_state = format!("{workflow:?}");
     assert!(!debug_state.contains("moderation-claim-token"));
@@ -54,6 +56,8 @@ fn api_workflow_composes_intake_and_moderation_deterministically() -> Result<(),
                 LeaseId::try_from("lease_rmoderation_energy_002")?,
                 ActorId::try_from("actor_moderator_002")?,
                 "other-moderation-claim-token",
+                true,
+                true,
             )
             .is_err()
     );
@@ -84,6 +88,8 @@ fn api_workflow_composes_intake_and_moderation_deterministically() -> Result<(),
                 LeaseId::try_from("lease_rmoderation_energy_003")?,
                 ActorId::try_from("actor_moderator_003")?,
                 "post-submit-token",
+                true,
+                true,
             )
             .is_err()
     );
@@ -91,6 +97,33 @@ fn api_workflow_composes_intake_and_moderation_deterministically() -> Result<(),
     let replay = workflow.submit_moderation_report(report)?;
     assert_eq!(replay.request_state, RequestState::PlanningOpen);
     assert_eq!(workflow.planning_task_count(), 1);
+    Ok(())
+}
+
+#[test]
+fn api_workflow_moderation_submission_uses_stored_claim_authorization() -> Result<(), Box<dyn Error>>
+{
+    let mut workflow = test_workflow();
+    let intake = workflow.submit_request(valid_payload(), intake_context()?)?;
+    workflow.claim_request_moderation_task(
+        intake.moderation_task.task_id.clone(),
+        LeaseId::try_from("lease_rmoderation_energy_001")?,
+        ActorId::try_from("actor_moderator_001")?,
+        "moderation-claim-token",
+        false,
+        true,
+    )?;
+
+    let error = workflow
+        .submit_moderation_report(moderation_report(&intake, "moderation-claim-token")?)
+        .err();
+
+    assert!(matches!(
+        error,
+        Some(RequestWorkflowError::ModerationRejected {
+            reason: "moderation_context_not_authorized"
+        })
+    ));
     Ok(())
 }
 
@@ -147,6 +180,8 @@ fn api_workflow_rejects_second_request_without_resetting_state() -> Result<(), B
         LeaseId::try_from("lease_rmoderation_energy_001")?,
         ActorId::try_from("actor_moderator_001")?,
         "moderation-claim-token",
+        true,
+        true,
     )?;
     workflow.submit_moderation_report(moderation_report(&intake, "moderation-claim-token")?)?;
     assert_eq!(workflow.planning_task_count(), 1);
@@ -190,6 +225,8 @@ fn stale_or_changed_moderation_submission_does_not_duplicate_planning() -> Resul
         LeaseId::try_from("lease_rmoderation_energy_001")?,
         ActorId::try_from("actor_moderator_001")?,
         "moderation-claim-token",
+        true,
+        true,
     )?;
     let report = ModerationReportSubmission {
         request_moderation_report_id: RequestModerationReportId::try_from("rmreport_energy_001")?,

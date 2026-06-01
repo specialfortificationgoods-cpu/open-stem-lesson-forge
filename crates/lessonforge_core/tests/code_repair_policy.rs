@@ -304,6 +304,47 @@ fn continuation_allows_quota_interruption_to_continue_elsewhere() {
 }
 
 #[test]
+fn continuation_stop_reasons_preserve_interruption_cause() {
+    for (interruption_reason, outcome, safe_reason_code) in [
+        (
+            RepairInterruptionReason::RunnerQuotaExhausted,
+            ContinuationOutcome::StopExhaustedAttempts,
+            RepairContinuationSafeReason::QuotaExhaustedStop,
+        ),
+        (
+            RepairInterruptionReason::ProviderUnavailableLocal,
+            ContinuationOutcome::StopExhaustedAttempts,
+            RepairContinuationSafeReason::ProviderUnavailableStop,
+        ),
+        (
+            RepairInterruptionReason::SandboxUnavailable,
+            ContinuationOutcome::StopExhaustedAttempts,
+            RepairContinuationSafeReason::SandboxUnavailableStop,
+        ),
+        (
+            RepairInterruptionReason::LocalPolicyRefused,
+            ContinuationOutcome::StopPolicyRefused,
+            RepairContinuationSafeReason::LocalPolicyRefusedStop,
+        ),
+    ] {
+        let mut context = continuation_context();
+        context.interruption_reason = interruption_reason;
+        let mut decision = continuation_decision();
+        decision.outcome = outcome;
+        decision.safe_reason_code = safe_reason_code;
+        decision.next_repair_continuation_index = None;
+
+        assert!(
+            context.validate_decision(&decision).is_ok(),
+            "{interruption_reason:?}/{outcome:?}/{safe_reason_code:?} should be valid"
+        );
+
+        decision.safe_reason_code = RepairContinuationSafeReason::OperatorBudgetStop;
+        assert!(context.validate_decision(&decision).is_err());
+    }
+}
+
+#[test]
 fn continuation_rejects_continue_after_malicious_interruption() {
     let mut context = continuation_context();
     context.interruption_reason = RepairInterruptionReason::SuspectedMaliciousTask;

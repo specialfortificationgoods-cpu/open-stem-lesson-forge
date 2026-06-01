@@ -20,6 +20,10 @@ fn valid_bundle_in_static_only_mode_is_explicitly_incomplete() -> Result<(), Box
         report.check_status(ValidationCheckName::PythonCheckerRuns),
         Some(CheckStatus::SkippedStaticOnly)
     );
+    assert_eq!(
+        report.check_status(ValidationCheckName::PublicProvenanceAllowlist),
+        Some(CheckStatus::Passed)
+    );
     assert!(report.all_checks_are_in_spec_order());
     assert!(!report.opens_machine_validation());
     assert_eq!(
@@ -47,6 +51,50 @@ fn valid_bundle_in_static_only_mode_is_explicitly_incomplete() -> Result<(), Box
             .authoritative_digests
             .bundle_digest
             .starts_with("sha256:")
+    );
+    Ok(())
+}
+
+#[test]
+fn valid_bundle_in_sandboxed_subprocess_mode_passes_python_checker() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    write_valid_bundle(temp.path())?;
+
+    let report = validate_bundle(
+        temp.path(),
+        &context(CheckerExecutionMode::SandboxedSubprocess),
+    )?;
+
+    assert_eq!(report.status, ValidationReportStatus::Passed);
+    assert!(report.opens_machine_validation());
+    assert_eq!(
+        report.check_status(ValidationCheckName::PythonCheckerRuns),
+        Some(CheckStatus::Passed)
+    );
+    Ok(())
+}
+
+#[test]
+fn sandboxed_subprocess_does_not_pass_unreadable_checker_runs() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    write_valid_bundle(temp.path())?;
+    fs::write(temp.path().join("checker.py"), [0xff, 0xfe, 0xfd])?;
+
+    let report = validate_bundle(
+        temp.path(),
+        &context(CheckerExecutionMode::SandboxedSubprocess),
+    )?;
+
+    assert_eq!(report.status, ValidationReportStatus::Failed);
+    assert_eq!(
+        report.check_status(ValidationCheckName::PythonCheckerRuns),
+        Some(CheckStatus::Failed)
+    );
+    assert!(report.failure_codes().contains(&"utf8_text_failed"));
+    assert!(
+        report
+            .failure_codes()
+            .contains(&"python_checker_runs_failed")
     );
     Ok(())
 }

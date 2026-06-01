@@ -215,6 +215,11 @@ fn surface_specific_claimable_states_use_their_own_transition_entities()
         RequestModerationTaskState::Claimed.transition(PlanningTaskTransition::Complete),
         Ok(RequestModerationTaskState::Completed)
     );
+    assert_eq!(
+        RequestModerationTaskState::Claimed
+            .transition(PlanningTaskTransition::LeaseExpiredOrReleased),
+        Ok(RequestModerationTaskState::Open)
+    );
     assert!(
         RequestModerationTaskState::Claimed
             .transition(PlanningTaskTransition::Submit)

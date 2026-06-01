@@ -535,8 +535,8 @@ Run dummy generator self-test for `checker.py`.
 Expected:
 
 - command ID maps to the exact spec `013` harness command;
-- sandbox has no network;
-- sandbox environment has no central token, claim token, provider credential, SSH key, cloud credential, home directory, or browser profile;
+- sandbox or constrained MVP subprocess profile has no function-time network/file descriptor access;
+- sandbox or constrained MVP subprocess environment has no central token, claim token, provider credential, SSH key, cloud credential, home directory, or browser profile;
 - filesystem access is limited to declared workspace mounts;
 - resource limits are enforced.
 
@@ -588,8 +588,8 @@ Run malicious checker fixtures attempting network access, filesystem escape, sub
 
 Expected:
 
-- validator-owned harness command is exactly `python3 -I /validator-runtime/validator_checker_harness.py --checker /bundle/checker.py`;
-- sandbox denies escape attempts and enforces CPU, memory, process, filesystem, and time limits;
+- validator-owned harness command uses isolated Python with the exact spec `010` checker contract;
+- sandbox denies escape attempts and enforces CPU, memory, process, filesystem, and time limits, or the constrained MVP subprocess profile enforces the spec `003` closed-checker exception with static gates, CPU/wall-clock limits, empty environment, no stdout/stderr, and function-time file-descriptor denial;
 - failure report is safe and deterministic.
 
 ## Review and Publication Gates
