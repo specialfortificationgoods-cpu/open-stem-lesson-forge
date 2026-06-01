@@ -56,13 +56,13 @@ const REQUIRED_ROWS: &[(&str, &str)] = &[
     ("REVIEW-GATE-003", "automated"),
     ("REVIEW-GATE-004", "automated"),
     ("REVIEW-GATE-005", "automated"),
-    ("CR-GATE-001", "automated"),
-    ("CR-GATE-002", "automated"),
-    ("CR-GATE-003", "automated"),
-    ("CR-GATE-004", "automated"),
-    ("CR-GATE-005", "automated"),
-    ("CR-GATE-006", "automated"),
-    ("CR-GATE-007", "automated"),
+    ("CR-GATE-001", "deferred_by_spec"),
+    ("CR-GATE-002", "deferred_by_spec"),
+    ("CR-GATE-003", "deferred_by_spec"),
+    ("CR-GATE-004", "deferred_by_spec"),
+    ("CR-GATE-005", "deferred_by_spec"),
+    ("CR-GATE-006", "deferred_by_spec"),
+    ("CR-GATE-007", "deferred_by_spec"),
     ("API-GATE-001", "automated"),
     ("API-GATE-002", "automated"),
 ];
@@ -111,7 +111,7 @@ fn run() -> Result<String, String> {
             return Err("unknown_case".to_owned());
         };
         let case_execution = run_case(&args.root, row)?;
-        let suffix = if matches!(row.id.as_str(), "LEAK-004" | "API-GATE-002") {
+        let suffix = if is_deferred_negative_case(row.id.as_str()) {
             " negative_unavailable_verified"
         } else {
             ""
@@ -126,8 +126,19 @@ fn run() -> Result<String, String> {
         ));
     }
 
+    // One deterministic smoke run covers the full-slice E2E rows.
     run_full_mvp_smoke(&args.root)?;
-    for row_id in ["LEAK-004", "API-GATE-002"] {
+    for row_id in [
+        "LEAK-004",
+        "API-GATE-002",
+        "CR-GATE-001",
+        "CR-GATE-002",
+        "CR-GATE-003",
+        "CR-GATE-004",
+        "CR-GATE-005",
+        "CR-GATE-006",
+        "CR-GATE-007",
+    ] {
         let row = rows
             .get(row_id)
             .ok_or_else(|| "manifest_missing_required_row".to_owned())?;
@@ -136,10 +147,10 @@ fn run() -> Result<String, String> {
     let mut output = String::from("mvp suite passed\n");
     for (id, _) in REQUIRED_ROWS {
         output.push_str(id);
-        if matches!(*id, "LEAK-004" | "API-GATE-002") {
+        if is_deferred_negative_case(id) {
             output.push_str(" executed/passed negative_unavailable_verified");
         } else if matches!(*id, "E2E-001" | "E2E-002") {
-            output.push_str(" executed_smoke");
+            output.push_str(" executed_shared_smoke");
         } else {
             output.push_str(" listed_in_manifest");
         }
@@ -257,8 +268,53 @@ fn run_case(root: &Path, row: &ManifestRow) -> Result<CaseExecution, String> {
             ],
         )
         .map(|()| CaseExecution::Executed),
+        "CR-GATE-001" | "CR-GATE-002" | "CR-GATE-003" | "CR-GATE-004" | "CR-GATE-005"
+        | "CR-GATE-006" | "CR-GATE-007" => {
+            verify_unavailable_code_repair_ingestion_surface(root).map(|()| CaseExecution::Executed)
+        }
         _ => Ok(CaseExecution::ListedDelegated),
     }
+}
+
+fn is_deferred_negative_case(row_id: &str) -> bool {
+    matches!(
+        row_id,
+        "LEAK-004"
+            | "API-GATE-002"
+            | "CR-GATE-001"
+            | "CR-GATE-002"
+            | "CR-GATE-003"
+            | "CR-GATE-004"
+            | "CR-GATE-005"
+            | "CR-GATE-006"
+            | "CR-GATE-007"
+    )
+}
+
+fn verify_unavailable_code_repair_ingestion_surface(root: &Path) -> Result<(), String> {
+    let scan_root = root.join("crates").join("lessonforge_api").join("src");
+    scan_source_tree_for_absence(
+        &scan_root,
+        &[
+            "claim_code_critique",
+            "submit_code_critique",
+            "claim_code_repair",
+            "submit_code_repair",
+            "code_critique_endpoint",
+            "code_repair_endpoint",
+            "/v1/code-critique",
+            "/v1/code-repair",
+            "/v1/code_critique",
+            "/v1/code_repair",
+        ],
+    )
+    .map_err(|error| {
+        match error.as_str() {
+            "unavailable_transport_surface_present" => "unavailable_code_repair_surface_present",
+            _ => "negative_surface_scan_failed",
+        }
+        .to_owned()
+    })
 }
 
 fn verify_unavailable_transport_surface(

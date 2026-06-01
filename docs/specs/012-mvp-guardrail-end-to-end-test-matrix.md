@@ -126,17 +126,18 @@ The first Rust MVP gate must assign these statuses:
 | `REVIEW-GATE-003` | `automated` |
 | `REVIEW-GATE-004` | `automated` |
 | `REVIEW-GATE-005` | `automated` |
-| `CR-GATE-001` | `automated` |
-| `CR-GATE-002` | `automated` |
-| `CR-GATE-003` | `automated` |
-| `CR-GATE-004` | `automated` |
-| `CR-GATE-005` | `automated` |
-| `CR-GATE-006` | `automated` |
-| `CR-GATE-007` | `automated` |
+| `CR-GATE-001` | `deferred_by_spec` |
+| `CR-GATE-002` | `deferred_by_spec` |
+| `CR-GATE-003` | `deferred_by_spec` |
+| `CR-GATE-004` | `deferred_by_spec` |
+| `CR-GATE-005` | `deferred_by_spec` |
+| `CR-GATE-006` | `deferred_by_spec` |
+| `CR-GATE-007` | `deferred_by_spec` |
 | `API-GATE-001` | `automated` |
 | `API-GATE-002` | `automated` |
 
 Rows may not be downgraded to `manual_fixture` without a later passed spec revision.
+CR-GATE rows remain `deferred_by_spec` in this matrix and flip to `automated` only in an implementation where spec `014` is active. Until then, the MVP gate must run negative-unavailable checks proving no central API critique or repair ingestion surface is exposed.
 
 ## End-to-End Happy Path
 
@@ -647,7 +648,7 @@ Expected:
 
 ### CR-GATE-001: Critique is advisory only
 
-CR-GATE rows are activated only after spec `014` has passed. Spec `012` names the matrix slots without making the whole MVP guardrail matrix depend on spec `014`.
+CR-GATE rows are `deferred_by_spec` in this matrix and activate only after spec `014` has passed. Spec `012` names the matrix slots without making the whole MVP guardrail matrix depend on spec `014`; when spec `014` is active, these rows flip to `automated`.
 
 Submit signed code critique with no findings, blocking findings, approval-like text, and recommended next state.
 

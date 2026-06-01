@@ -31,10 +31,11 @@ fn mvp_suite_passes_and_reports_required_rows() -> Result<(), Box<dyn Error>> {
     assert!(stdout.contains("E2E-001"));
     assert!(stdout.contains("CR-GATE-004"));
     assert!(stdout.contains("API-GATE-002"));
-    assert!(stdout.contains("E2E-001 executed_smoke"));
-    assert!(stdout.contains("E2E-002 executed_smoke"));
+    assert!(stdout.contains("E2E-001 executed_shared_smoke"));
+    assert!(stdout.contains("E2E-002 executed_shared_smoke"));
     assert!(stdout.contains("LEAK-004 executed/passed negative_unavailable_verified"));
     assert!(stdout.contains("API-GATE-002 executed/passed negative_unavailable_verified"));
+    assert!(stdout.contains("CR-GATE-004 executed/passed negative_unavailable_verified"));
     assert!(stdout.contains("mvp suite passed"));
     Ok(())
 }
@@ -68,7 +69,7 @@ fn single_delegated_case_is_not_reported_as_executed() -> Result<(), Box<dyn Err
         .arg("--suite")
         .arg("mvp")
         .arg("--case")
-        .arg("CR-GATE-004")
+        .arg("REQ-GATE-001")
         .arg("--root")
         .arg(workspace_root()?)
         .output()?;
@@ -80,7 +81,7 @@ fn single_delegated_case_is_not_reported_as_executed() -> Result<(), Box<dyn Err
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("CR-GATE-004"));
+    assert!(stdout.contains("REQ-GATE-001"));
     assert!(stdout.contains("listed/delegated via"));
     assert!(!stdout.contains("passed via"));
     Ok(())
@@ -88,7 +89,7 @@ fn single_delegated_case_is_not_reported_as_executed() -> Result<(), Box<dyn Err
 
 #[test]
 fn unavailable_transport_cases_are_negative_tests() -> Result<(), Box<dyn Error>> {
-    for case_id in ["LEAK-004", "API-GATE-002"] {
+    for case_id in ["LEAK-004", "API-GATE-002", "CR-GATE-004"] {
         let output = Command::new(e2e())
             .arg("--suite")
             .arg("mvp")

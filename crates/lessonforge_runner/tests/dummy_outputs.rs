@@ -234,6 +234,23 @@ fn dummy_generator_requires_valid_attestation_config() -> Result<(), Box<dyn Err
     large_key.attestation.ed25519_private_key_path = large_key_path.display().to_string();
     assert_eq!(config_error_code(&large_key), "invalid_attestation_config");
 
+    let uppercase_key_dir = temp.path().join("uppercase-key");
+    std::fs::create_dir_all(&uppercase_key_dir)?;
+    let uppercase_key_path = uppercase_key_dir.join("runner.hex");
+    std::fs::write(
+        &uppercase_key_path,
+        hex_seed(&[10; 32]).to_ascii_uppercase(),
+    )?;
+    let mut uppercase_key = dummy_config_with_workspace(
+        "actor_generator_001",
+        "Dummy Generator",
+        RunnerMode::DummyGenerator,
+        temp.path(),
+    );
+    uppercase_key.attestation.runner_key_id = "rkey_dummy_generator_001".to_owned();
+    uppercase_key.attestation.ed25519_private_key_path = uppercase_key_path.display().to_string();
+    validate_runner_config(&uppercase_key)?;
+
     #[cfg(unix)]
     {
         let outside = tempfile::tempdir()?;
