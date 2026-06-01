@@ -4,7 +4,8 @@ use lessonforge_runner::{
     dummy_request_moderation_report, validate_runner_config, write_dummy_artifact_bundle,
 };
 use lessonforge_validator::{
-    ArtifactValidationContext, CheckerExecutionMode, ValidationReportStatus, validate_bundle,
+    ArtifactValidationContext, CheckerExecutionMode, ValidationReportStatus,
+    discover_python3_interpreter_for_test, validate_bundle,
 };
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -452,6 +453,9 @@ fn run_full_mvp_smoke(root: &Path) -> Result<(), String> {
             runner_actor_id: generation_context.runner_actor_id,
             validator_version: "mvp-e2e".to_owned(),
             execution_mode: CheckerExecutionMode::SandboxedSubprocess,
+            python_interpreter_path: Some(
+                discover_python3_interpreter_for_test().ok_or("python_interpreter_unavailable")?,
+            ),
             submitted_digests: None,
         },
     )

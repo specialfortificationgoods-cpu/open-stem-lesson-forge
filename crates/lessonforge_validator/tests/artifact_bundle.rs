@@ -4,7 +4,8 @@ use std::path::{Path, PathBuf};
 
 use lessonforge_validator::{
     ArtifactValidationContext, CheckStatus, CheckerExecutionMode, SubmittedArtifactDigests,
-    ValidationCheckName, ValidationReportStatus, compute_artifact_digests, validate_bundle,
+    ValidationCheckName, ValidationReportStatus, compute_artifact_digests,
+    discover_python3_interpreter_for_test, validate_bundle,
 };
 
 #[test]
@@ -232,6 +233,42 @@ fn oversized_allowed_file_is_not_read_for_text_or_digests() -> Result<(), Box<dy
 }
 
 #[test]
+fn sandboxed_subprocess_requires_configured_python_interpreter() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    write_valid_bundle(temp.path())?;
+    let mut context = context(CheckerExecutionMode::SandboxedSubprocess);
+    context.python_interpreter_path = None;
+
+    let report = validate_bundle(temp.path(), &context)?;
+
+    assert_eq!(report.status, ValidationReportStatus::Failed);
+    assert!(
+        report
+            .failure_codes()
+            .contains(&"python_checker_runs_failed")
+    );
+    Ok(())
+}
+
+#[test]
+fn sandboxed_subprocess_rejects_relative_python_interpreter_path() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    write_valid_bundle(temp.path())?;
+    let mut context = context(CheckerExecutionMode::SandboxedSubprocess);
+    context.python_interpreter_path = Some(PathBuf::from("python3"));
+
+    let report = validate_bundle(temp.path(), &context)?;
+
+    assert_eq!(report.status, ValidationReportStatus::Failed);
+    assert!(
+        report
+            .failure_codes()
+            .contains(&"python_checker_runs_failed")
+    );
+    Ok(())
+}
+
+#[test]
 fn context_bound_manifest_ids_are_not_hard_coded_to_fixture_ids() -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
     write_valid_bundle(temp.path())?;
@@ -262,6 +299,7 @@ fn context_bound_manifest_ids_are_not_hard_coded_to_fixture_ids() -> Result<(), 
             runner_actor_id: "runner_context_002".to_owned(),
             validator_version: "1.0".to_owned(),
             execution_mode: CheckerExecutionMode::StaticOnly,
+            python_interpreter_path: None,
             submitted_digests: None,
         },
     )?;
@@ -793,6 +831,9 @@ fn context(execution_mode: CheckerExecutionMode) -> ArtifactValidationContext {
         runner_actor_id: "actor_generator_001".to_owned(),
         validator_version: "1.0".to_owned(),
         execution_mode,
+        python_interpreter_path: (execution_mode == CheckerExecutionMode::SandboxedSubprocess)
+            .then(discover_python3_interpreter_for_test)
+            .flatten(),
         submitted_digests: None,
     }
 }

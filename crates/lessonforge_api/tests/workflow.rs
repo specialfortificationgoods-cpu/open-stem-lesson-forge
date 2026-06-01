@@ -327,6 +327,7 @@ fn api_workflow_review_requires_claim_and_promotes_only_valid_human_review()
     };
     let debug_state = format!("{workflow:?}");
     assert!(!debug_state.contains(&claim_token));
+    assert!(!debug_state.contains("review-claim-001"));
     assert!(!debug_state.contains("claim_token_hash"));
     assert!(!debug_state.contains("test-review-claim-secret"));
     let replayed_claim = workflow.claim_review_task(
@@ -342,6 +343,7 @@ fn api_workflow_review_requires_claim_and_promotes_only_valid_human_review()
     )?;
     assert!(!replayed_claim.claim_token_returned);
     assert!(replayed_claim.claim_token.is_none());
+    assert!(!format!("{workflow:?}").contains("review-claim-001"));
     assert!(
         workflow
             .claim_review_task(

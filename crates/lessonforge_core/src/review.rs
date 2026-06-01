@@ -834,8 +834,23 @@ fn contains_student_pii_marker(value: &str, lower: &str) -> bool {
         || lower.contains("guardian")
         || contains_percent_grade_marker(value, lower)
         || contains_grade_fraction(value, lower)
-        || contains_titlecase_name_pair(value)
+        || (contains_titlecase_name_pair(value) && contains_student_name_context(lower))
         || has_phone_like_number(value, lower)
+}
+
+fn contains_student_name_context(lower: &str) -> bool {
+    [
+        "student",
+        "learner",
+        "pupil",
+        "roster",
+        "parent",
+        "guardian",
+        "grade",
+        "attendance",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
 }
 
 fn contains_labeled_field(lower: &str, label: &str) -> bool {

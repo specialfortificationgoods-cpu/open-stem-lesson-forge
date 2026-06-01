@@ -185,13 +185,23 @@ impl CapabilityConfig {
             RunnerMode::DummyPlanVerifier => (
                 vec!["plan_verification"],
                 vec!["verify_proposed_task_graph"],
-                vec!["plan_verification", "policy_reasoning"],
+                vec![
+                    "policy_cross_check",
+                    "plan_consistency_review",
+                    "policy_reasoning",
+                ],
                 vec!["structured_json_output"],
             ),
             RunnerMode::DummyGenerator => (
                 vec!["artifact_generation"],
                 vec!["generate_lesson_pack"],
-                vec!["stem_pedagogy", "structured_markdown", "basic_python"],
+                vec![
+                    "artifact_generation",
+                    "stem_pedagogy",
+                    "structured_markdown",
+                    "basic_python",
+                    "python_execution_limited",
+                ],
                 vec![
                     "structured_json_output",
                     "sandboxed_python_checker_self_test",
@@ -200,7 +210,11 @@ impl CapabilityConfig {
             RunnerMode::DummyCodeCritic => (
                 vec!["code_critique"],
                 vec!["critique_generated_code"],
-                vec!["code_review", "python_checker_static_analysis"],
+                vec![
+                    "artifact_validation",
+                    "policy_cross_check",
+                    "python_execution_limited",
+                ],
                 vec![
                     "structured_json_output",
                     "sandboxed_python_checker_critique",
@@ -209,7 +223,11 @@ impl CapabilityConfig {
             RunnerMode::DummyCodeRepairer | RunnerMode::DummyCodeRepairerAutoLoop => (
                 vec!["code_repair"],
                 vec!["repair_generated_code"],
-                vec!["code_repair", "python_checker_repair"],
+                vec![
+                    "artifact_generation",
+                    "basic_python",
+                    "python_execution_limited",
+                ],
                 vec!["structured_json_output", "sandboxed_python_checker_repair"],
             ),
         };
@@ -251,6 +269,7 @@ pub struct ForbiddenPrivateFields {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidatedRunnerConfig {
     config: RunnerConfig,
+    canonical_private_key_path: Option<PathBuf>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -339,7 +358,7 @@ pub fn validate_runner_config(
     validate_origin(&config.runner.central_api_base, &config.transport.tls)?;
     validate_summary_fields(config)?;
     validate_capabilities_match_mode(config)?;
-    validate_attestation_config(config)?;
+    let canonical_private_key_path = validate_attestation_config(config)?;
     if config.policy.allow_provider_backed_modes {
         return Err(RunnerConfigError::ProviderBackedModesUnavailable);
     }
@@ -349,6 +368,7 @@ pub fn validate_runner_config(
     validate_automated_repair_policy(config)?;
     Ok(ValidatedRunnerConfig {
         config: config.clone(),
+        canonical_private_key_path,
     })
 }
 
@@ -1109,10 +1129,12 @@ fn seal_self_test_report(
 fn signing_key_from_config(
     validated: &ValidatedRunnerConfig,
 ) -> Result<SigningKey, RunnerOutputError> {
-    let bytes = read_bounded_ed25519_key_file(Path::new(
-        &validated.config.attestation.ed25519_private_key_path,
-    ))
-    .map_err(|_| RunnerOutputError::OutputUnavailable)?;
+    let path = validated
+        .canonical_private_key_path
+        .as_deref()
+        .ok_or(RunnerOutputError::OutputUnavailable)?;
+    let bytes =
+        read_bounded_ed25519_key_file(path).map_err(|_| RunnerOutputError::OutputUnavailable)?;
     let seed = parse_ed25519_seed(&bytes).ok_or(RunnerOutputError::OutputUnavailable)?;
     Ok(SigningKey::from_bytes(&seed))
 }
@@ -1520,14 +1542,16 @@ fn validate_capabilities_match_mode(config: &RunnerConfig) -> Result<(), RunnerC
     }
 }
 
-fn validate_attestation_config(config: &RunnerConfig) -> Result<(), RunnerConfigError> {
+fn validate_attestation_config(
+    config: &RunnerConfig,
+) -> Result<Option<PathBuf>, RunnerConfigError> {
     let requires_attestation = config.runner.mode == RunnerMode::DummyGenerator;
     if !requires_attestation {
         if config.attestation.runner_key_id.is_empty()
             && config.attestation.ed25519_private_key_path.is_empty()
             && config.attestation.runner_private_key_dir.is_empty()
         {
-            return Ok(());
+            return Ok(None);
         }
         return Err(RunnerConfigError::InvalidAttestationConfig);
     }
@@ -1547,14 +1571,14 @@ fn validate_attestation_config(config: &RunnerConfig) -> Result<(), RunnerConfig
         &canonical_key_path,
     )?;
     if (!key_in_workspace && !key_in_private_dir)
-        || read_bounded_ed25519_key_file(key_path)
+        || read_bounded_ed25519_key_file(&canonical_key_path)
             .ok()
             .and_then(|bytes| parse_ed25519_seed(&bytes))
             .is_none()
     {
         return Err(RunnerConfigError::InvalidAttestationConfig);
     }
-    Ok(())
+    Ok(Some(canonical_key_path))
 }
 
 fn validate_runner_private_key_dir(

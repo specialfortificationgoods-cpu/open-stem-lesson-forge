@@ -178,6 +178,7 @@ fn dummy_generator_writes_valid_bundle_and_authoritative_digests() -> Result<(),
         runner_actor_id: context.runner_actor_id.clone(),
         validator_version: "lessonforge_validator_static_v1".to_owned(),
         execution_mode: CheckerExecutionMode::StaticOnly,
+        python_interpreter_path: None,
         submitted_digests: Some(SubmittedArtifactDigests {
             file_digests: file_digest_records(&output_dir, &output.provenance.file_digests)?,
             bundle_digest: output.provenance.bundle_digest.clone(),

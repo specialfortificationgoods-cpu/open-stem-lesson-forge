@@ -53,8 +53,11 @@ impl fmt::Debug for DeterministicWorkflow {
             .field("moderation_outcome", &self.moderation_outcome)
             .field("planning_tasks", &self.planning_tasks)
             .field("review_task", &self.review_task)
-            .field("review_claim", &self.review_claim)
-            .field("review_claim_replays", &self.review_claim_replays)
+            .field(
+                "review_claim",
+                &self.review_claim.as_ref().map(RedactedReviewClaim),
+            )
+            .field("review_claim_replays", &"<redacted>")
             .field("review_submission", &self.review_submission)
             .field("review_gate_state", &self.review_gate_state)
             .field("artifact_state", &self.artifact_state)
@@ -625,6 +628,21 @@ impl fmt::Debug for RedactedModerationClaim<'_> {
             .field("lease_id", &self.0.lease_id)
             .field("actor_id", &self.0.actor_id)
             .field("active", &self.0.active)
+            .finish()
+    }
+}
+
+struct RedactedReviewClaim<'a>(&'a ReviewClaim);
+
+impl fmt::Debug for RedactedReviewClaim<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ReviewClaim")
+            .field("task_id", &self.0.task_id)
+            .field("lease_id", &self.0.lease_id)
+            .field("reviewer_actor_id", &self.0.reviewer.reviewer_actor_id)
+            .field("active", &self.0.active)
+            .field("expires_at", &self.0.expires_at)
             .finish()
     }
 }

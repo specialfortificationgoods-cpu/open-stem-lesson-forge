@@ -190,7 +190,11 @@ fn automated_repair_loop_opt_in_is_allowed_only_for_auto_loop_mode() -> Result<(
     );
     assert_eq!(
         summary.capabilities.workflow_capabilities,
-        vec!["code_repair", "python_checker_repair"]
+        vec![
+            "artifact_generation",
+            "basic_python",
+            "python_execution_limited"
+        ]
     );
     assert_eq!(automated_repair_attempt_bucket(2), Some("2"));
     assert_eq!(automated_repair_attempt_bucket(3), None);

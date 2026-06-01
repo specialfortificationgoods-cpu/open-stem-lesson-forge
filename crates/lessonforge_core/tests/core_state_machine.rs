@@ -455,6 +455,12 @@ fn lease_submission_consumes_once_and_replay_requires_same_key_and_payload()
             .apply(LeaseAction::Submit(changed_submission)),
         Err(lessonforge_core::error::LeaseError::IdempotencyConflict)
     ));
+    let mut changed_result = submission.clone();
+    changed_result.result_id = "plan_energy_other".to_owned();
+    assert!(matches!(
+        consumed.clone().apply(LeaseAction::Submit(changed_result)),
+        Err(lessonforge_core::error::LeaseError::IdempotencyConflict)
+    ));
 
     assert_eq!(
         consumed.replay_submission(LeaseSubmissionReplay {

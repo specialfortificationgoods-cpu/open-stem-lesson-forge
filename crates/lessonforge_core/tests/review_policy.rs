@@ -537,8 +537,8 @@ fn finding_policy_rejects_invalid_severity_unsafe_text_and_laundered_blocking_fl
         "+44 2079460958",
         "phone +1 5551234567",
         "contact 44 2079460958",
-        "Charlie Chen: 90%",
-        "Charlie Li: 90/100",
+        "Student Charlie Chen: 90%",
+        "Student Charlie Li: 90/100",
         "Quiz score % 85",
         "café score 90/100",
     ] {
@@ -596,6 +596,8 @@ fn finding_policy_rejects_invalid_severity_unsafe_text_and_laundered_blocking_fl
         "Use 15551234567 as an opaque example number",
         "Use 2125550199 as an opaque example number",
         "Use 5551234567extra as a synthetic label",
+        "Answer Key",
+        "Teacher Notes",
     ] {
         let mut safe_numeric_text = ReviewSubmission::approved_no_findings();
         safe_numeric_text.findings = vec![FindingInput {

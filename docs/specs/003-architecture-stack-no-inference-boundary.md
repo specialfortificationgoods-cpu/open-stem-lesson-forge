@@ -246,6 +246,16 @@ the closed MVP checker contract. A later non-MVP execution profile must add a
 stronger OS sandbox, container, or equivalent filesystem/network isolation before
 expanding executable artifact scope.
 
+MVP acceptance for the constrained profile is implemented by
+`lessonforge_validator` under `CheckerExecutionMode::SandboxedSubprocess`.
+The automated gate must verify conservative static rejection of network,
+filesystem, subprocess, dynamic import, top-level side-effect, loop escape, and
+checker-contract mismatch cases; empty stdin/environment subprocess execution;
+wall-clock and CPU limits before import; file-descriptor denial before checker
+function calls; empty stdout/stderr pass conditions; and safe failure codes such
+as `python_checker_static_safety_failed`, `no_external_network_static_failed`,
+and `python_checker_runs_failed`.
+
 ### `lessonforge_schema`
 
 Owns schema loading and validation helpers:

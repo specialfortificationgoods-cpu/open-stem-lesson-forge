@@ -1028,7 +1028,9 @@ impl Lease {
             .iter()
             .find(|record| record.key == command.idempotency_key)
         {
-            if record.payload_digest == command.payload_digest {
+            if record.payload_digest == command.payload_digest
+                && record.result_id == command.result_id
+            {
                 return Ok(true);
             }
             return Err(LeaseError::IdempotencyConflict);

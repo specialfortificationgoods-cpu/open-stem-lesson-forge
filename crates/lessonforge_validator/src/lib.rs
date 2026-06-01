@@ -57,6 +57,7 @@ pub struct ArtifactValidationContext {
     pub runner_actor_id: String,
     pub validator_version: String,
     pub execution_mode: CheckerExecutionMode,
+    pub python_interpreter_path: Option<PathBuf>,
     pub submitted_digests: Option<SubmittedArtifactDigests>,
 }
 
@@ -327,6 +328,7 @@ pub fn validate_bundle(
         bundle_root,
         &bundle,
         context.execution_mode,
+        context.python_interpreter_path.as_deref(),
         execution_prerequisites_passed,
         &mut builder,
     );
@@ -760,6 +762,7 @@ fn validate_checker(
     bundle_root: &Path,
     bundle: &Option<InspectedBundle>,
     execution_mode: CheckerExecutionMode,
+    python_interpreter_path: Option<&Path>,
     execution_prerequisites_passed: bool,
     builder: &mut ReportBuilder,
 ) {
@@ -794,7 +797,7 @@ fn validate_checker(
             }
             return;
         };
-        let safety = checker_static_safety(&checker);
+        let safety = checker_static_safety(&checker, python_interpreter_path);
         checker_static_ok = safety.safe;
         checker_no_network_ok = safety.no_external_network;
         if !safety.safe {
@@ -823,7 +826,7 @@ fn validate_checker(
                 || !execution_prerequisites_passed
                 || !checker_static_ok
                 || !checker_no_network_ok
-                || !run_python_checker(bundle_root)
+                || !run_python_checker(bundle_root, python_interpreter_path)
             {
                 builder.fail(
                     ValidationCheckName::PythonCheckerRuns,
@@ -834,7 +837,7 @@ fn validate_checker(
     }
 }
 
-fn run_python_checker(bundle_root: &Path) -> bool {
+fn run_python_checker(bundle_root: &Path, python_interpreter_path: Option<&Path>) -> bool {
     let Ok(bundle_root) = bundle_root.canonicalize() else {
         return false;
     };
@@ -862,7 +865,7 @@ checks = [
 if not all(checks):
     raise SystemExit(1)
 "#;
-    let Some(python3) = find_python3_interpreter() else {
+    let Some(python3) = validate_python3_interpreter(python_interpreter_path) else {
         return false;
     };
     let Ok(output) = Command::new(python3)
@@ -879,7 +882,7 @@ if not all(checks):
     output.status.success() && output.stdout.is_empty() && output.stderr.is_empty()
 }
 
-fn find_python3_interpreter() -> Option<PathBuf> {
+pub fn discover_python3_interpreter_for_test() -> Option<PathBuf> {
     env::var_os("PATH")
         .into_iter()
         .flat_map(|path| env::split_paths(&path).collect::<Vec<_>>())
@@ -894,7 +897,20 @@ fn find_python3_interpreter() -> Option<PathBuf> {
             .map(PathBuf::from),
         )
         .filter_map(|candidate| candidate.canonicalize().ok())
-        .find(|candidate| candidate.is_absolute() && candidate.is_file())
+        .find(|candidate| valid_python3_interpreter_path(candidate))
+}
+
+fn validate_python3_interpreter(path: Option<&Path>) -> Option<PathBuf> {
+    let path = path?;
+    if !path.is_absolute() {
+        return None;
+    }
+    let canonical = path.canonicalize().ok()?;
+    valid_python3_interpreter_path(&canonical).then_some(canonical)
+}
+
+fn valid_python3_interpreter_path(path: &Path) -> bool {
+    path.is_absolute() && path.is_file()
 }
 
 fn manifest_schema_values_are_valid(manifest: &ArtifactManifest) -> bool {
@@ -932,13 +948,19 @@ struct CheckerStaticSafety {
     no_external_network: bool,
 }
 
-fn checker_static_safety(source: &str) -> CheckerStaticSafety {
-    python_ast_checker_static_safety(source)
+fn checker_static_safety(
+    source: &str,
+    python_interpreter_path: Option<&Path>,
+) -> CheckerStaticSafety {
+    python_ast_checker_static_safety(source, python_interpreter_path)
         .unwrap_or_else(|| heuristic_checker_static_safety(source))
 }
 
-fn python_ast_checker_static_safety(source: &str) -> Option<CheckerStaticSafety> {
-    let python3 = find_python3_interpreter()?;
+fn python_ast_checker_static_safety(
+    source: &str,
+    python_interpreter_path: Option<&Path>,
+) -> Option<CheckerStaticSafety> {
+    let python3 = validate_python3_interpreter(python_interpreter_path)?;
     let script = r#"
 import ast
 import sys
@@ -1995,7 +2017,9 @@ def speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:
 
     #[test]
     fn python_ast_static_safety_path_executes_successfully() -> Result<(), String> {
-        let result = python_ast_checker_static_safety(VALID_CHECKER_SOURCE)
+        let python3 = discover_python3_interpreter_for_test()
+            .ok_or_else(|| "python3 should be available for AST checker tests".to_owned())?;
+        let result = python_ast_checker_static_safety(VALID_CHECKER_SOURCE, Some(&python3))
             .ok_or_else(|| "python AST static checker should execute".to_owned())?;
 
         assert!(result.safe);
@@ -2005,7 +2029,9 @@ def speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:
 
     #[test]
     fn python_ast_static_safety_rejects_blocked_imports_without_fallback() -> Result<(), String> {
-        let result = python_ast_checker_static_safety("import socket\n")
+        let python3 = discover_python3_interpreter_for_test()
+            .ok_or_else(|| "python3 should be available for AST checker tests".to_owned())?;
+        let result = python_ast_checker_static_safety("import socket\n", Some(&python3))
             .ok_or_else(|| "python AST checker should execute".to_owned())?;
 
         assert!(!result.safe);
@@ -2033,7 +2059,9 @@ def gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: 
 def speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:
     return math.sqrt((2.0 * kinetic_energy_j) / mass_kg)
 "#;
-        let result = python_ast_checker_static_safety(source)
+        let python3 = discover_python3_interpreter_for_test()
+            .ok_or_else(|| "python3 should be available for AST checker tests".to_owned())?;
+        let result = python_ast_checker_static_safety(source, Some(&python3))
             .ok_or_else(|| "python AST checker should execute".to_owned())?;
 
         assert!(!result.safe);
@@ -2047,7 +2075,9 @@ def speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:
             "gravitational_potential_energy(mass_kg: float, g_m_per_s2: float, height_m: float)",
             "gravitational_potential_energy(mass_kg: float, height_m: float, g_m_per_s2: float)",
         );
-        let result = python_ast_checker_static_safety(&source)
+        let python3 = discover_python3_interpreter_for_test()
+            .ok_or_else(|| "python3 should be available for AST checker tests".to_owned())?;
+        let result = python_ast_checker_static_safety(&source, Some(&python3))
             .ok_or_else(|| "python AST checker should execute".to_owned())?;
 
         assert!(!result.safe);
