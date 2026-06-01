@@ -31,8 +31,9 @@ fn mvp_suite_passes_and_reports_required_rows() -> Result<(), Box<dyn Error>> {
     assert!(stdout.contains("E2E-001"));
     assert!(stdout.contains("CR-GATE-004"));
     assert!(stdout.contains("API-GATE-002"));
-    assert!(stdout.contains("LEAK-004 negative_unavailable_verified"));
-    assert!(stdout.contains("API-GATE-002 negative_unavailable_verified"));
+    assert!(stdout.contains("E2E-001 listed_in_manifest"));
+    assert!(stdout.contains("LEAK-004 executed/passed negative_unavailable_verified"));
+    assert!(stdout.contains("API-GATE-002 executed/passed negative_unavailable_verified"));
     assert!(stdout.contains("mvp suite passed"));
     Ok(())
 }

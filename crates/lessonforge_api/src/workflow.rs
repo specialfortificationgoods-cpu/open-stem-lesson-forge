@@ -45,7 +45,10 @@ impl fmt::Debug for DeterministicWorkflow {
             .field("request", &self.request)
             .field("moderation_task_id", &self.moderation_task_id)
             .field("planning_task_id", &self.planning_task_id)
-            .field("moderation_claim", &self.moderation_claim)
+            .field(
+                "moderation_claim",
+                &self.moderation_claim.as_ref().map(RedactedModerationClaim),
+            )
             .field("moderation_outcome", &self.moderation_outcome)
             .field("planning_tasks", &self.planning_tasks)
             .field("review_task", &self.review_task)
@@ -572,7 +575,7 @@ pub struct ReviewClaimResult {
     pub expires_at: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct ModerationClaim {
     request_id: RequestId,
     task_id: RequestModerationTaskId,
@@ -581,6 +584,22 @@ struct ModerationClaim {
     actor_id: ActorId,
     claim_token_hash: String,
     active: bool,
+}
+
+struct RedactedModerationClaim<'a>(&'a ModerationClaim);
+
+impl fmt::Debug for RedactedModerationClaim<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ModerationClaim")
+            .field("request_id", &self.0.request_id)
+            .field("task_id", &self.0.task_id)
+            .field("planning_task_id", &self.0.planning_task_id)
+            .field("lease_id", &self.0.lease_id)
+            .field("actor_id", &self.0.actor_id)
+            .field("active", &self.0.active)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone)]

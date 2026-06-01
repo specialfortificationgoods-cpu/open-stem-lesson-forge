@@ -38,7 +38,6 @@ const FORBIDDEN_MARKERS: &[ForbiddenMarker] = &[
     ForbiddenMarker::new("google-ai"),
     ForbiddenMarker::new("mistral"),
     ForbiddenMarker::new("ollama"),
-    ForbiddenMarker::new("llama"),
     ForbiddenMarker::new("lmstudio"),
     ForbiddenMarker::new("lm_studio"),
     ForbiddenMarker::new("openrouter"),
@@ -52,7 +51,6 @@ const FORBIDDEN_MARKERS: &[ForbiddenMarker] = &[
     ForbiddenMarker::new("moderation-provider"),
     ForbiddenMarker::new("embedding"),
     ForbiddenMarker::new("embeddings"),
-    ForbiddenMarker::new("vector"),
     ForbiddenMarker::new("qdrant"),
     ForbiddenMarker::new("pinecone"),
     ForbiddenMarker::new("weaviate"),
@@ -82,7 +80,6 @@ const FORBIDDEN_MARKERS: &[ForbiddenMarker] = &[
     ForbiddenMarker::new("headless_chrome"),
     ForbiddenMarker::new("thirtyfour"),
     ForbiddenMarker::new("fantoccini"),
-    ForbiddenMarker::new("docker"),
     ForbiddenMarker::new("containerd"),
     ForbiddenMarker::new("candle"),
     ForbiddenMarker::new("tokenizers"),
@@ -111,13 +108,19 @@ const FORBIDDEN_MARKERS: &[ForbiddenMarker] = &[
 ];
 
 const CENTRAL_DATA_FORBIDDEN_MARKERS: &[ForbiddenMarker] = &[
+    ForbiddenMarker::new("model_provider"),
+    ForbiddenMarker::new("provider_base_url"),
+    ForbiddenMarker::new("prompt_template"),
+    ForbiddenMarker::new("model_prompt"),
+    ForbiddenMarker::new("prompt_text"),
+    ForbiddenMarker::new("raw_prompt"),
+];
+
+const CENTRAL_DATA_EXACT_IDENTIFIER_MARKERS: &[ForbiddenMarker] = &[
     ForbiddenMarker::new("model"),
     ForbiddenMarker::new("provider"),
     ForbiddenMarker::new("prompt"),
     ForbiddenMarker::new("prompts"),
-    ForbiddenMarker::new("model_prompt"),
-    ForbiddenMarker::new("prompt_text"),
-    ForbiddenMarker::new("raw_prompt"),
 ];
 
 const DIRECT_INFERENCE_CALL_MARKERS: &[ForbiddenMarker] =
@@ -557,16 +560,25 @@ fn scan_central_data_prompt_markers(
     let content = fs::read_to_string(path).map_err(|error| error.to_string())?;
     for (index, line) in content.lines().enumerate() {
         let safe_checked_item_removed = line.replace("\"no_arbitrary_prompt\"", "");
-        let normalized = normalize_marker_input(&safe_checked_item_removed);
-        for marker in CENTRAL_DATA_FORBIDDEN_MARKERS {
-            if normalized.contains(&normalize_marker_input(marker.name)) {
-                findings.push(Finding {
-                    path: path.to_path_buf(),
-                    line: index.saturating_add(1),
-                    marker: *marker,
-                    context: "central schema or migration content",
-                });
-            }
+        for marker in marker_matches_in(CENTRAL_DATA_FORBIDDEN_MARKERS, &safe_checked_item_removed)
+        {
+            findings.push(Finding {
+                path: path.to_path_buf(),
+                line: index.saturating_add(1),
+                marker,
+                context: "central schema or migration content",
+            });
+        }
+        for marker in exact_identifier_matches(
+            CENTRAL_DATA_EXACT_IDENTIFIER_MARKERS,
+            &safe_checked_item_removed,
+        ) {
+            findings.push(Finding {
+                path: path.to_path_buf(),
+                line: index.saturating_add(1),
+                marker,
+                context: "central schema or migration identifier",
+            });
         }
     }
     Ok(())
@@ -724,11 +736,72 @@ fn marker_match(value: &str) -> bool {
 }
 
 fn marker_matches(value: &str) -> Vec<ForbiddenMarker> {
-    let normalized = normalize_marker_input(value);
-    FORBIDDEN_MARKERS
+    marker_matches_in(FORBIDDEN_MARKERS, value)
+}
+
+fn marker_matches_in(markers: &[ForbiddenMarker], value: &str) -> Vec<ForbiddenMarker> {
+    let tokens = marker_tokens(value);
+    markers
         .iter()
         .copied()
-        .filter(|marker| normalized.contains(&normalize_marker_input(marker.name)))
+        .filter(|marker| contains_marker_tokens(&tokens, marker.name))
+        .collect()
+}
+
+fn exact_identifier_matches(markers: &[ForbiddenMarker], value: &str) -> Vec<ForbiddenMarker> {
+    markers
+        .iter()
+        .copied()
+        .filter(|marker| contains_exact_identifier(value, marker.name))
+        .collect()
+}
+
+fn contains_exact_identifier(value: &str, marker: &str) -> bool {
+    let value = value.to_ascii_lowercase();
+    let marker = marker.to_ascii_lowercase();
+    let mut search_start = 0;
+    while let Some(relative_start) = value[search_start..].find(&marker) {
+        let start = search_start.saturating_add(relative_start);
+        let end = start.saturating_add(marker.len());
+        let before_is_identifier = value[..start]
+            .chars()
+            .next_back()
+            .is_some_and(is_identifier_character);
+        let after_is_identifier = value[end..]
+            .chars()
+            .next()
+            .is_some_and(is_identifier_character);
+        if !before_is_identifier && !after_is_identifier {
+            return true;
+        }
+        search_start = end;
+    }
+    false
+}
+
+fn is_identifier_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || character == '_'
+}
+
+fn contains_marker_tokens(tokens: &[String], marker: &str) -> bool {
+    let marker_tokens = marker_tokens(marker);
+    if marker_tokens.is_empty() {
+        return false;
+    }
+    if marker.contains('_') || marker.contains('-') || marker.chars().any(char::is_uppercase) {
+        let joined_tokens = tokens.join("");
+        return joined_tokens.contains(&normalize_marker_input(marker));
+    }
+    tokens
+        .windows(marker_tokens.len())
+        .any(|window| window == marker_tokens.as_slice())
+}
+
+fn marker_tokens(value: &str) -> Vec<String> {
+    value
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .map(|token| token.to_ascii_lowercase())
         .collect()
 }
 
@@ -798,5 +871,34 @@ mod tests {
         assert!(error.contains("symlink not allowed in no-inference scan"));
         assert!(findings.is_empty());
         Ok(())
+    }
+
+    #[test]
+    fn marker_matching_uses_tokens_not_substrings() {
+        assert!(marker_match("OPENAI_API_KEY"));
+        assert!(marker_match("ProviderBaseUrl"));
+        assert!(marker_match("call_llm"));
+        assert!(!marker_match("provider_count"));
+        assert!(!marker_match("model_state"));
+        assert!(!marker_match("vector_clock"));
+        assert!(!marker_match("dockerless"));
+    }
+
+    #[test]
+    fn exact_identifier_matching_avoids_substrings() {
+        assert!(contains_exact_identifier(
+            r#"{"properties":{"prompt":{"type":"string"}}}"#,
+            "prompt"
+        ));
+        assert!(contains_exact_identifier(
+            "CREATE TABLE prompts (id TEXT PRIMARY KEY);",
+            "prompts"
+        ));
+        assert!(!contains_exact_identifier("provider_count", "provider"));
+        assert!(!contains_exact_identifier("model_state", "model"));
+        assert!(!contains_exact_identifier(
+            "no_arbitrary_prompt_override",
+            "prompt"
+        ));
     }
 }

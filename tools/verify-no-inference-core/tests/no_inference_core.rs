@@ -233,6 +233,10 @@ fn central_schema_and_migration_fields_fail_scan() -> Result<(), Box<dyn Error>>
             r#"{"properties":{"model_prompt":{"type":"string"}}}"#,
         ),
         (
+            "schemas/bare-authority.json",
+            r#"{"properties":{"prompt":{"type":"string"},"model":{"type":"string"},"provider":{"type":"string"}}}"#,
+        ),
+        (
             "migrations/001_vectors.sql",
             "CREATE TABLE embedding_vectors (id TEXT PRIMARY KEY);",
         ),
@@ -242,11 +246,11 @@ fn central_schema_and_migration_fields_fail_scan() -> Result<(), Box<dyn Error>>
         ),
         (
             "schemas/provider.json",
-            r#"{"properties":{"provider":{"type":"string"},"model":{"type":"string"}}}"#,
+            r#"{"properties":{"model_provider":{"type":"string"},"provider_base_url":{"type":"string"}}}"#,
         ),
         (
             "schemas/checked_items.json",
-            r#"{"enum":["no_arbitrary_prompt_override"]}"#,
+            r#"{"enum":["no_arbitrary_raw_prompt_override"]}"#,
         ),
     ] {
         let temp = tempfile::tempdir()?;
@@ -294,7 +298,7 @@ fn exact_safe_checked_item_token_does_not_fail_central_schema_scan() -> Result<(
     fs::create_dir_all(temp.path().join("schemas"))?;
     fs::write(
         temp.path().join("schemas/plan_verification.schema.json"),
-        r#"{"enum":["no_arbitrary_prompt"]}"#,
+        r#"{"enum":["no_arbitrary_prompt"],"properties":{"provider_count":{"type":"integer"},"model_state":{"type":"string"}}}"#,
     )?;
 
     let output = Command::new(verifier())

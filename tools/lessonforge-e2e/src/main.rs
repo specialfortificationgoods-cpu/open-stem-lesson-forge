@@ -133,7 +133,9 @@ fn run() -> Result<String, String> {
     for (id, _) in REQUIRED_ROWS {
         output.push_str(id);
         if matches!(*id, "LEAK-004" | "API-GATE-002") {
-            output.push_str(" negative_unavailable_verified");
+            output.push_str(" executed/passed negative_unavailable_verified");
+        } else {
+            output.push_str(" listed_in_manifest");
         }
         output.push('\n');
     }

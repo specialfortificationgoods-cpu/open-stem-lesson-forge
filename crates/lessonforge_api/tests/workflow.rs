@@ -44,6 +44,9 @@ fn api_workflow_composes_intake_and_moderation_deterministically() -> Result<(),
         ActorId::try_from("actor_moderator_001")?,
         "moderation-claim-token",
     )?;
+    let debug_state = format!("{workflow:?}");
+    assert!(!debug_state.contains("moderation-claim-token"));
+    assert!(!debug_state.contains("claim_token_hash"));
     assert!(
         workflow
             .claim_request_moderation_task(
