@@ -725,7 +725,7 @@ fn contains_windows_absolute_path(lower: &str) -> bool {
 }
 
 fn contains_sensitive_review_marker(lower: &str) -> bool {
-    contains_delimited_prefix(lower, "sk-")
+    contains_known_secret_prefix(lower)
         || contains_token_sequence(lower, &["api", "key"])
         || contains_token_sequence(lower, &["secret", "key"])
         || contains_token_sequence(lower, &["access", "token"])
@@ -740,6 +740,12 @@ fn contains_sensitive_review_marker(lower: &str) -> bool {
         || contains_assignment_like_alias(lower, "password")
         || contains_assignment_like_secret_value(lower, "token")
         || contains_assignment_like_secret_value(lower, "secret")
+}
+
+fn contains_known_secret_prefix(lower: &str) -> bool {
+    ["sk-", "sk_live", "sk_test", "sk_proj", "ghp_", "akia"]
+        .iter()
+        .any(|prefix| contains_delimited_prefix(lower, prefix))
 }
 
 fn contains_token_sequence(lower: &str, sequence: &[&str]) -> bool {

@@ -214,7 +214,7 @@ Allowed transitions:
 | From | To | Actor | Guard |
 |---|---|---|---|
 | none | `requested` | requester | Required fields present. |
-| `requested` | `rejected` | system_core | Deterministic intake rejection. |
+| none | `rejected` | system_core | Deterministic intake rejection / invalid input detected before persistence. |
 | `requested` | `quarantined` | system_core or curator | Deterministic abuse/safety trigger. |
 | `requested` | `moderation_pending` | system_core | Deterministic intake passes and request moderation task created. |
 | `moderation_pending` | `rejected` | system_core | Accepted moderation report denies the request. |
@@ -229,6 +229,10 @@ Allowed transitions:
 | `artifact_drafted` | `machine_validated` | system_core | Selected MVP artifact bundle passed trusted deterministic validation. |
 | `machine_validated` | `peer_reviewed` | system_core | Selected MVP artifact bundle passed required human approval gates. |
 | any non-terminal or `planning_failed` | `deprecated` | curator or admin | Explicit administrative remediation or supersession with safe reason code. |
+
+The `none -> rejected` intake rejection path is a pre-persistence outcome: it
+does not create a `Request` record and therefore does not pass through a
+persisted `requested` state.
 
 Request state is an aggregate summary. It does not replace proposal, work packet, artifact, or review state.
 

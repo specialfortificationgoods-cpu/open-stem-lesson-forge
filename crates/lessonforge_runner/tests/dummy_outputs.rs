@@ -544,7 +544,7 @@ fn dummy_config(
     public_name: &str,
     mode: RunnerMode,
 ) -> lessonforge_runner::RunnerConfig {
-    lessonforge_runner::RunnerConfig::dummy(runner_id, public_name, mode, "https://127.0.0.1:8443")
+    lessonforge_runner::RunnerConfig::dummy(runner_id, public_name, mode, "http://127.0.0.1:8080")
 }
 
 fn dummy_config_with_workspace(

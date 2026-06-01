@@ -266,6 +266,8 @@ fn promotion_requires_independent_accepted_verification() -> Result<(), Box<dyn 
             verification_type: "plan_schema_policy_cross_check".to_owned(),
             verifier_lease_active_and_consumed: true,
             verifier_actor_id: ActorId::try_from("actor_verifier_001")?,
+            planner_operator_account_id: "operator_planner".to_owned(),
+            verifier_operator_account_id: "operator_verifier".to_owned(),
             verifier_scope_id: "scope_default".to_owned(),
             outcome: PlanVerificationOutcome::BlockingFindings,
             blocking_findings: true,
@@ -287,12 +289,34 @@ fn promotion_requires_independent_accepted_verification() -> Result<(), Box<dyn 
             verification_type: "plan_schema_policy_cross_check".to_owned(),
             verifier_lease_active_and_consumed: true,
             verifier_actor_id: ActorId::try_from("actor_verifier_001")?,
+            planner_operator_account_id: "operator_planner".to_owned(),
+            verifier_operator_account_id: "operator_verifier".to_owned(),
             verifier_scope_id: "scope_default".to_owned(),
             outcome: PlanVerificationOutcome::NoBlockingFindings,
             blocking_findings: false,
             critical_or_major_findings: false,
         });
     assert!(forged.is_err());
+
+    let same_operator = outcome
+        .proposal
+        .require_plan_verification()?
+        .apply_plan_verification(PlanVerificationEvidence {
+            plan_verification_task_id: plan_task.plan_verification_task_id,
+            proposal_id: outcome.proposal.proposal_id().clone(),
+            request_id: RequestId::try_from("req_energy_001")?,
+            planning_task_id: PlanningTaskId::try_from("ptask_energy_001")?,
+            verification_type: "plan_schema_policy_cross_check".to_owned(),
+            verifier_lease_active_and_consumed: true,
+            verifier_actor_id: ActorId::try_from("actor_verifier_002")?,
+            planner_operator_account_id: "operator_planner".to_owned(),
+            verifier_operator_account_id: "operator_planner".to_owned(),
+            verifier_scope_id: "scope_default".to_owned(),
+            outcome: PlanVerificationOutcome::NoBlockingFindings,
+            blocking_findings: false,
+            critical_or_major_findings: false,
+        });
+    assert!(same_operator.is_err());
     Ok(())
 }
 
@@ -314,6 +338,8 @@ fn verified_low_risk_graph_promotes_transactionally_and_replay_is_idempotent()
             verification_type: "plan_schema_policy_cross_check".to_owned(),
             verifier_lease_active_and_consumed: true,
             verifier_actor_id: ActorId::try_from("actor_verifier_001")?,
+            planner_operator_account_id: "operator_planner".to_owned(),
+            verifier_operator_account_id: "operator_verifier".to_owned(),
             verifier_scope_id: "scope_default".to_owned(),
             outcome: PlanVerificationOutcome::NoBlockingFindings,
             blocking_findings: false,
@@ -556,6 +582,38 @@ fn non_low_risk_and_high_risk_task_types_are_rejected_without_verification()
 }
 
 #[test]
+fn plan_verification_rejects_missing_planner_operator_provenance() -> Result<(), Box<dyn Error>> {
+    let mut context = graph_context()?;
+    context.planner_operator_account_id = String::new();
+    let outcome = validate_proposed_task_graph(valid_graph(), context)?;
+    let Some(plan_task) = outcome.plan_verification_task.clone() else {
+        return Err("valid graph should create a plan verification task".into());
+    };
+
+    let verification = outcome
+        .proposal
+        .require_plan_verification()?
+        .apply_plan_verification(PlanVerificationEvidence {
+            plan_verification_task_id: plan_task.plan_verification_task_id,
+            proposal_id: outcome.proposal.proposal_id().clone(),
+            request_id: RequestId::try_from("req_energy_001")?,
+            planning_task_id: PlanningTaskId::try_from("ptask_energy_001")?,
+            verification_type: "plan_schema_policy_cross_check".to_owned(),
+            verifier_lease_active_and_consumed: true,
+            verifier_actor_id: ActorId::try_from("actor_verifier_001")?,
+            planner_operator_account_id: String::new(),
+            verifier_operator_account_id: "operator_verifier".to_owned(),
+            verifier_scope_id: "scope_default".to_owned(),
+            outcome: PlanVerificationOutcome::NoBlockingFindings,
+            blocking_findings: false,
+            critical_or_major_findings: false,
+        });
+
+    assert!(verification.is_err());
+    Ok(())
+}
+
+#[test]
 fn promotion_rejects_duplicate_work_packet_ids_before_ledger_mutation() -> Result<(), Box<dyn Error>>
 {
     let outcome = validate_proposed_task_graph(valid_graph(), graph_context()?)?;
@@ -573,6 +631,8 @@ fn promotion_rejects_duplicate_work_packet_ids_before_ledger_mutation() -> Resul
             verification_type: "plan_schema_policy_cross_check".to_owned(),
             verifier_lease_active_and_consumed: true,
             verifier_actor_id: ActorId::try_from("actor_verifier_001")?,
+            planner_operator_account_id: "operator_planner".to_owned(),
+            verifier_operator_account_id: "operator_verifier".to_owned(),
             verifier_scope_id: "scope_default".to_owned(),
             outcome: PlanVerificationOutcome::NoBlockingFindings,
             blocking_findings: false,
@@ -616,6 +676,7 @@ fn graph_context() -> Result<GraphValidationContext, Box<dyn Error>> {
         request_id: RequestId::try_from("req_energy_001")?,
         planning_task_id: PlanningTaskId::try_from("ptask_energy_001")?,
         planner_actor_id: ActorId::try_from("actor_planner_001")?,
+        planner_operator_account_id: "operator_planner".to_owned(),
         scope_id: "scope_default".to_owned(),
         subject: "physics".to_owned(),
         topic: "conservation_of_energy".to_owned(),

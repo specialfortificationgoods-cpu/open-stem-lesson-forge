@@ -31,8 +31,10 @@ fn mvp_suite_passes_and_reports_required_rows() -> Result<(), Box<dyn Error>> {
     assert!(stdout.contains("E2E-001"));
     assert!(stdout.contains("CR-GATE-004"));
     assert!(stdout.contains("API-GATE-002"));
-    assert!(stdout.contains("E2E-001 executed_shared_smoke"));
-    assert!(stdout.contains("E2E-002 executed_shared_smoke"));
+    assert!(stdout.contains("E2E-001 executed/passed"));
+    assert!(stdout.contains("E2E-002 executed/passed"));
+    assert!(stdout.contains("NINF-001 executed_manifest_command"));
+    assert!(stdout.contains("LEAK-001 executed_manifest_command"));
     assert!(stdout.contains("LEAK-004 executed/passed negative_unavailable_verified"));
     assert!(stdout.contains("API-GATE-002 executed/passed negative_unavailable_verified"));
     assert!(stdout.contains("CR-GATE-004 executed/passed negative_unavailable_verified"));
@@ -64,7 +66,7 @@ fn single_case_runs_from_manifest() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn single_delegated_case_is_not_reported_as_executed() -> Result<(), Box<dyn Error>> {
+fn single_automated_case_runs_shared_smoke() -> Result<(), Box<dyn Error>> {
     let output = Command::new(e2e())
         .arg("--suite")
         .arg("mvp")
@@ -76,14 +78,13 @@ fn single_delegated_case_is_not_reported_as_executed() -> Result<(), Box<dyn Err
 
     assert!(
         output.status.success(),
-        "expected delegated manifest case to pass\nstdout:\n{}\nstderr:\n{}",
+        "expected automated manifest case to pass through shared smoke\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("REQ-GATE-001"));
-    assert!(stdout.contains("listed/delegated via"));
-    assert!(!stdout.contains("passed via"));
+    assert!(stdout.contains("executed/manifest-command-passed via"));
     Ok(())
 }
 

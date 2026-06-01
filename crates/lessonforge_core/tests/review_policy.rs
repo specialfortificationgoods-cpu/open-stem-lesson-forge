@@ -513,6 +513,8 @@ fn finding_policy_rejects_invalid_severity_unsafe_text_and_laundered_blocking_fl
         r"D:\Users\alice\.codex\auth.json",
         "z:/Users/alice/.codex/auth.json",
         ".codex/auth.json",
+        "token sk_live_redacted",
+        "token ghp_redacted",
         "Student Alice scored 90",
         "student: Alice",
         "student = Alice",

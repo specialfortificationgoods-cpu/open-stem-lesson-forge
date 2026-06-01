@@ -53,6 +53,8 @@ pub enum AutomatedRepairDeclineReason {
     QuarantineRequired,
     HumanReviewAlreadyOpen,
     AttemptLimitReached,
+    #[allow(dead_code)]
+    // Reserved for scheduler-level repair matching once runner availability is modeled.
     NoOptedInRunnerAvailable,
     RunnerScopeOrCapabilityMismatch,
     CuratorOrAdminDisabled,

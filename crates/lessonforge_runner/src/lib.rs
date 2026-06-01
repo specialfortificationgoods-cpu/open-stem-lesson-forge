@@ -1402,6 +1402,7 @@ fn validate_origin(origin: &str, tls: &TlsSection) -> Result<(), RunnerConfigErr
     match tls.trust_policy {
         TlsTrustPolicy::LoopbackDevelopment => {
             if !loopback
+                || scheme != "http"
                 || !tls.pinned_ca_pem_path.is_empty()
                 || !tls.pinned_spki_sha256.is_empty()
                 || !tls.expected_server_name.is_empty()

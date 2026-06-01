@@ -5,7 +5,8 @@ use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Output, Stdio};
+use std::time::{Duration, Instant};
 
 #[cfg(not(unix))]
 compile_error!("lessonforge_validator currently requires Unix filesystem metadata semantics");
@@ -963,8 +964,13 @@ fn python_ast_checker_static_safety(
     let python3 = validate_python3_interpreter(python_interpreter_path)?;
     let script = r#"
 import ast
+import resource
+import signal
 import sys
 
+resource.setrlimit(resource.RLIMIT_CPU, (1, 1))
+signal.alarm(2)
+resource.setrlimit(resource.RLIMIT_NOFILE, (16, 16))
 source = sys.stdin.read()
 blocked_modules = {
     "subprocess", "socket", "ssl", "http", "urllib", "requests", "pathlib",
@@ -1114,8 +1120,14 @@ print(("1" if safe else "0") + " " + ("1" if no_external_network else "0"))
         .stderr(Stdio::null())
         .spawn()
         .ok()?;
-    child.stdin.as_mut()?.write_all(source.as_bytes()).ok()?;
-    let output = child.wait_with_output().ok()?;
+    let mut stdin = child.stdin.take()?;
+    if stdin.write_all(source.as_bytes()).is_err() {
+        let _ = child.kill();
+        let _ = child.wait();
+        return None;
+    }
+    drop(stdin);
+    let output = wait_for_child_output_with_timeout(child, Duration::from_secs(3))?;
     if !output.status.success() {
         return None;
     }
@@ -1125,6 +1137,21 @@ print(("1" if safe else "0") + " " + ("1" if no_external_network else "0"))
         safe: parts.next()? == "1" && !source.lines().any(unsafe_shebang),
         no_external_network: parts.next()? == "1",
     })
+}
+
+fn wait_for_child_output_with_timeout(mut child: Child, timeout: Duration) -> Option<Output> {
+    let start = Instant::now();
+    loop {
+        if child.try_wait().ok()?.is_some() {
+            return child.wait_with_output().ok();
+        }
+        if start.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }
 
 fn heuristic_checker_static_safety(source: &str) -> CheckerStaticSafety {
@@ -2082,6 +2109,26 @@ def speed_from_kinetic_energy(kinetic_energy_j: float, mass_kg: float) -> float:
 
         assert!(!result.safe);
         assert!(result.no_external_network);
+        Ok(())
+    }
+
+    #[test]
+    fn python_ast_static_safety_timeout_reaps_child() -> Result<(), String> {
+        let python3 = discover_python3_interpreter_for_test()
+            .ok_or_else(|| "python3 should be available for timeout tests".to_owned())?;
+        let child = Command::new(python3)
+            .arg("-I")
+            .arg("-B")
+            .arg("-c")
+            .arg("import time; time.sleep(5)")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| error.to_string())?;
+
+        let output = wait_for_child_output_with_timeout(child, Duration::from_millis(100));
+
+        assert!(output.is_none());
         Ok(())
     }
 }

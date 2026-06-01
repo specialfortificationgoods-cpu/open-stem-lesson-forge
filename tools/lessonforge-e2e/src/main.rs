@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 const REQUIRED_ROWS: &[(&str, &str)] = &[
     ("E2E-001", "automated"),
@@ -139,23 +140,26 @@ fn run() -> Result<String, String> {
         ));
     }
 
-    // One deterministic smoke run covers the full-slice E2E rows.
-    run_full_mvp_smoke(&args.root)?;
-    for &row_id in DEFERRED_NEGATIVE_ROWS {
-        let row = rows
-            .get(row_id)
-            .ok_or_else(|| "manifest_missing_required_row".to_owned())?;
-        run_case(&args.root, row)?;
-    }
+    let mut command_results = BTreeMap::new();
     let mut output = String::from("mvp suite passed\n");
-    for (id, _) in REQUIRED_ROWS {
-        output.push_str(id);
-        if is_deferred_negative_case(id) {
-            output.push_str(" executed/passed negative_unavailable_verified");
-        } else if matches!(*id, "E2E-001" | "E2E-002") {
-            output.push_str(" executed_shared_smoke");
+    for (row_id, expected_status) in REQUIRED_ROWS {
+        let row = rows
+            .get(*row_id)
+            .ok_or_else(|| "manifest_missing_required_row".to_owned())?;
+        let execution = if let Some(cached) = command_results.get(&row.command) {
+            *cached
         } else {
-            output.push_str(" listed_in_manifest");
+            let execution = run_case(&args.root, row)?;
+            if *expected_status == "automated" {
+                command_results.insert(row.command.clone(), execution);
+            }
+            execution
+        };
+        output.push_str(row_id);
+        output.push(' ');
+        output.push_str(execution.suite_label());
+        if is_deferred_negative_case(row_id) {
+            output.push_str(" negative_unavailable_verified");
         }
         output.push('\n');
     }
@@ -243,6 +247,8 @@ fn validate_manifest(manifest: &Manifest) -> Result<BTreeMap<String, ManifestRow
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CaseExecution {
     Executed,
+    ExecutedSharedSmoke,
+    ExecutedManifestCommand,
     ListedDelegated,
 }
 
@@ -250,7 +256,18 @@ impl CaseExecution {
     fn label(self) -> &'static str {
         match self {
             Self::Executed => "executed/passed",
+            Self::ExecutedSharedSmoke => "executed/shared-smoke-passed",
+            Self::ExecutedManifestCommand => "executed/manifest-command-passed",
             Self::ListedDelegated => "listed/delegated",
+        }
+    }
+
+    fn suite_label(self) -> &'static str {
+        match self {
+            Self::Executed => "executed/passed",
+            Self::ExecutedSharedSmoke => "executed_shared_smoke",
+            Self::ExecutedManifestCommand => "executed_manifest_command",
+            Self::ListedDelegated => "listed_in_manifest",
         }
     }
 }
@@ -275,7 +292,107 @@ fn run_case(root: &Path, row: &ManifestRow) -> Result<CaseExecution, String> {
         | "CR-GATE-006" | "CR-GATE-007" => {
             verify_unavailable_code_repair_ingestion_surface(root).map(|()| CaseExecution::Executed)
         }
+        _ if row.status == "automated" => run_automated_manifest_command(root, row),
         _ => Ok(CaseExecution::ListedDelegated),
+    }
+}
+
+fn run_automated_manifest_command(root: &Path, row: &ManifestRow) -> Result<CaseExecution, String> {
+    match row.command.as_str() {
+        "cargo run -p lessonforge-e2e -- --suite mvp --case E2E-001"
+        | "cargo run -p lessonforge-e2e -- --suite mvp --case E2E-002" => {
+            run_full_mvp_smoke(root).map(|()| CaseExecution::ExecutedSharedSmoke)
+        }
+        "cargo run -p verify-no-inference-core" => {
+            run_cargo(root, &["run", "-p", "verify-no-inference-core"])
+                .map(|()| CaseExecution::ExecutedManifestCommand)
+        }
+        "cargo run -p verify-no-leak-fixtures" => {
+            run_cargo(root, &["run", "-p", "verify-no-leak-fixtures"])
+                .map(|()| CaseExecution::ExecutedManifestCommand)
+        }
+        "cargo test --workspace" => run_cargo(
+            root,
+            &["test", "--workspace", "--exclude", "lessonforge-e2e"],
+        )
+        .map(|()| CaseExecution::ExecutedManifestCommand),
+        "cargo test -p lessonforge_api --test workflow" => run_cargo(
+            root,
+            &["test", "-p", "lessonforge_api", "--test", "workflow"],
+        )
+        .map(|()| CaseExecution::ExecutedManifestCommand),
+        "cargo test -p lessonforge_core --test code_repair_policy" => run_cargo(
+            root,
+            &[
+                "test",
+                "-p",
+                "lessonforge_core",
+                "--test",
+                "code_repair_policy",
+            ],
+        )
+        .map(|()| CaseExecution::ExecutedManifestCommand),
+        "cargo test -p lessonforge_core --test core_state_machine" => run_cargo(
+            root,
+            &[
+                "test",
+                "-p",
+                "lessonforge_core",
+                "--test",
+                "core_state_machine",
+            ],
+        )
+        .map(|()| CaseExecution::ExecutedManifestCommand),
+        "cargo test -p lessonforge_core --test proposed_graph_policy" => run_cargo(
+            root,
+            &[
+                "test",
+                "-p",
+                "lessonforge_core",
+                "--test",
+                "proposed_graph_policy",
+            ],
+        )
+        .map(|()| CaseExecution::ExecutedManifestCommand),
+        "cargo test -p lessonforge_core --test request_workflow" => run_cargo(
+            root,
+            &[
+                "test",
+                "-p",
+                "lessonforge_core",
+                "--test",
+                "request_workflow",
+            ],
+        )
+        .map(|()| CaseExecution::ExecutedManifestCommand),
+        "cargo test -p lessonforge_core --test review_policy" => run_cargo(
+            root,
+            &["test", "-p", "lessonforge_core", "--test", "review_policy"],
+        )
+        .map(|()| CaseExecution::ExecutedManifestCommand),
+        "cargo test -p lessonforge_runner" => {
+            run_cargo(root, &["test", "-p", "lessonforge_runner"])
+                .map(|()| CaseExecution::ExecutedManifestCommand)
+        }
+        "cargo test -p lessonforge_validator" => {
+            run_cargo(root, &["test", "-p", "lessonforge_validator"])
+                .map(|()| CaseExecution::ExecutedManifestCommand)
+        }
+        _ => Err("unsupported_automated_manifest_command".to_owned()),
+    }
+}
+
+fn run_cargo(root: &Path, args: &[&str]) -> Result<(), String> {
+    let output = Command::new("cargo")
+        .args(args)
+        .current_dir(root)
+        .env("CARGO_TERM_COLOR", "never")
+        .output()
+        .map_err(|_| "manifest_command_failed".to_owned())?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err("manifest_command_failed".to_owned())
     }
 }
 

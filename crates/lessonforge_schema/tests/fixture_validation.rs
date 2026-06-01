@@ -59,6 +59,14 @@ fn request_fixture_rejects_unknown_and_raw_unsafe_values_safely() -> Result<(), 
     repair_request["auto_repair_preference"] = json!("request_bounded_code_repair");
     validate_mvp_request(&repair_request)?;
 
+    let mut non_fixture_request = valid_request();
+    non_fixture_request["title"] = json!("Algebraic functions lesson");
+    non_fixture_request["subject"] = json!("mathematics");
+    non_fixture_request["topic"] = json!("linear_functions");
+    non_fixture_request["age_range"] = json!("13-15");
+    non_fixture_request["lesson_duration_minutes"] = json!(60);
+    validate_mvp_request(&non_fixture_request)?;
+
     let mut bad_repair_request = valid_request();
     bad_repair_request["auto_repair_preference"] = json!("keep_fixing_until_it_works");
     let repair_error = match validate_mvp_request(&bad_repair_request) {
@@ -183,6 +191,28 @@ fn report_and_manifest_fixtures_are_closed() -> Result<(), Box<dyn Error>> {
     validate_plan_verification(&valid_plan_verification())?;
     validate_artifact_manifest(&valid_artifact_manifest())?;
 
+    let mut non_fixture_verification = valid_plan_verification();
+    non_fixture_verification["verification_id"] = json!("pverify_general_002");
+    non_fixture_verification["proposal_id"] = json!("plan_general_002");
+    non_fixture_verification["verification_task_id"] = json!("pvtask_general_002");
+    non_fixture_verification["verifier_runner_id"] = json!("actor_verifier_general_002");
+    validate_plan_verification(&non_fixture_verification)?;
+
+    for (field, unsafe_id) in [
+        ("verification_id", "pverify_/Users/alice"),
+        ("proposal_id", "plan_sk_live_secret"),
+        ("verification_task_id", "pvtask_https://example"),
+        ("verifier_runner_id", "actor_../runner"),
+    ] {
+        let mut unsafe_verification = valid_plan_verification();
+        unsafe_verification[field] = json!(unsafe_id);
+        let unsafe_id_error = match validate_plan_verification(&unsafe_verification) {
+            Ok(()) => return Err(format!("{field} should reject unsafe id shape").into()),
+            Err(error) => error,
+        };
+        assert_eq!(unsafe_id_error.code, "invalid_identifier");
+    }
+
     let mut warning_verification = valid_plan_verification();
     warning_verification["outcome"] = json!("warnings_only");
     warning_verification["findings"] = json!([{
@@ -250,6 +280,9 @@ fn report_and_manifest_fixtures_are_closed() -> Result<(), Box<dyn Error>> {
         r"See z:/Users/alice/private-notes.",
         r"See \\fileserver\share\private-notes.",
         "Student record is referenced.",
+        "Finding references sk_live_redacted.",
+        "Finding references s k _ l i v e redacted.",
+        "Finding references g h p _ redacted.",
         "Human Approval granted; Promote to peer_reviewed.",
         "Peer_Reviewed claim.",
     ] {

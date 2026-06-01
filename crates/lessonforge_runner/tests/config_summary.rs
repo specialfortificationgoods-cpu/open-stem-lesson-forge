@@ -107,6 +107,12 @@ fn non_loopback_https_origins_require_complete_pinned_transport() -> Result<(), 
         "unsafe_central_api_origin"
     );
 
+    let unpinned_https_loopback = dummy_planner_config_with_base("https://127.0.0.1:8443");
+    assert_eq!(
+        config_error_code(&unpinned_https_loopback),
+        "unsafe_central_api_origin"
+    );
+
     let mut wrong_name = empty_pin.clone();
     wrong_name.transport.tls.pinned_ca_pem_path = ca_path.display().to_string();
     wrong_name.transport.tls.expected_server_name = "other.example".to_owned();
@@ -132,6 +138,12 @@ fn non_loopback_https_origins_require_complete_pinned_transport() -> Result<(), 
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_owned();
     pinned_spki.transport.tls.expected_server_name = "lessonforge.example".to_owned();
     validate_runner_config(&pinned_spki)?;
+
+    let mut pinned_loopback = dummy_planner_config_with_base("https://127.0.0.1:8443");
+    pinned_loopback.transport.tls.trust_policy = lessonforge_runner::TlsTrustPolicy::PinnedCa;
+    pinned_loopback.transport.tls.pinned_ca_pem_path = ca_path.display().to_string();
+    pinned_loopback.transport.tls.expected_server_name = "127.0.0.1".to_owned();
+    validate_runner_config(&pinned_loopback)?;
     Ok(())
 }
 
@@ -227,7 +239,7 @@ fn config_error_code_and_debug(
 }
 
 fn dummy_planner_config() -> lessonforge_runner::RunnerConfig {
-    dummy_planner_config_with_base("https://127.0.0.1:8443")
+    dummy_planner_config_with_base("http://127.0.0.1:8080")
 }
 
 fn dummy_planner_config_with_base(base: &str) -> lessonforge_runner::RunnerConfig {

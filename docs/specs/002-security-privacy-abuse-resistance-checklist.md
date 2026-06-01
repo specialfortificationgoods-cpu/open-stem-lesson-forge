@@ -39,8 +39,8 @@ Later specs must preserve these central-core boundaries:
 
 Required adversarial tests:
 
-- A static dependency check fails if `apps/api`, the central-core package, the central API dependency graph, or any shared package imported by the central core includes OpenAI, Anthropic, Gemini, Ollama, LangChain, LlamaIndex, model-provider SDKs, inference frameworks, embedding/vector clients, provider adapters, or equivalent inference libraries.
-- A configuration check fails if `apps/api` requires provider credential environment variables.
+- A static dependency check fails if `crates/lessonforge_api`, the central-core package, the central API dependency graph, or any shared package imported by the central core includes OpenAI, Anthropic, Gemini, Ollama, LangChain, LlamaIndex, model-provider SDKs, inference frameworks, embedding/vector clients, provider adapters, or equivalent inference libraries.
+- A configuration check fails if `crates/lessonforge_api` requires provider credential environment variables.
 - A schema or migration check fails if MVP central-core tables include embedding/vector fields.
 - An endpoint or integration test fails if core request intake creates semantic work packets without a runner proposal.
 

@@ -27,6 +27,9 @@ const VALIDATION_CHECKS: &[&str] = &[
 ];
 
 const DESIRED_ARTIFACTS: &[&str] = &["worksheet", "answer_key", "python_checker", "teacher_notes"];
+const SUPPORTED_LANGUAGES: &[&str] = &["en"];
+const SUPPORTED_LICENSES: &[&str] = &["CC-BY-4.0"];
+const SUPPORTED_VISIBILITIES: &[&str] = &["public", "private"];
 const MANIFEST_CONTENTS: &[&str] = &[
     "manifest.json",
     "worksheet.md",
@@ -180,31 +183,31 @@ pub fn validate_mvp_request(value: &Value) -> Result<(), SchemaError> {
     let request: MvpRequest = deserialize(SchemaName::MvpRequest, value)?;
     require_eq(
         SchemaName::MvpRequest,
-        request.subject == "physics",
+        valid_request_slug(&request.subject),
         "invalid_subject",
         "/subject",
     )?;
     require_eq(
         SchemaName::MvpRequest,
-        request.topic == "conservation_of_energy",
+        valid_request_slug(&request.topic),
         "invalid_topic",
         "/topic",
     )?;
     require_eq(
         SchemaName::MvpRequest,
-        request.age_range == "14-16",
+        valid_age_range(&request.age_range),
         "invalid_age_range",
         "/age_range",
     )?;
     require_eq(
         SchemaName::MvpRequest,
-        request.language == "en",
+        SUPPORTED_LANGUAGES.contains(&request.language.as_str()),
         "invalid_language",
         "/language",
     )?;
     require_eq(
         SchemaName::MvpRequest,
-        request.lesson_duration_minutes == 45,
+        (15..=180).contains(&request.lesson_duration_minutes),
         "invalid_duration",
         "/lesson_duration_minutes",
     )?;
@@ -217,13 +220,13 @@ pub fn validate_mvp_request(value: &Value) -> Result<(), SchemaError> {
     )?;
     require_eq(
         SchemaName::MvpRequest,
-        request.license_preference == "CC-BY-4.0",
+        SUPPORTED_LICENSES.contains(&request.license_preference.as_str()),
         "invalid_license",
         "/license_preference",
     )?;
     require_eq(
         SchemaName::MvpRequest,
-        matches!(request.visibility.as_str(), "public" | "private"),
+        SUPPORTED_VISIBILITIES.contains(&request.visibility.as_str()),
         "invalid_visibility",
         "/visibility",
     )?;
@@ -385,28 +388,28 @@ pub fn validate_proposed_task_graph(value: &Value) -> Result<(), SchemaError> {
 
 pub fn validate_plan_verification(value: &Value) -> Result<(), SchemaError> {
     let verification: PlanVerification = deserialize(SchemaName::PlanVerification, value)?;
-    require_prefix(
+    require_prefixed_slug(
         SchemaName::PlanVerification,
         &verification.verification_id,
         "pverify_",
         "/verification_id",
     )?;
-    require_eq(
+    require_prefixed_slug(
         SchemaName::PlanVerification,
-        verification.verification_task_id == "pvtask_energy_001_a",
-        "verification_task_lineage_mismatch",
+        &verification.verification_task_id,
+        "pvtask_",
         "/verification_task_id",
     )?;
-    require_eq(
+    require_prefixed_slug(
         SchemaName::PlanVerification,
-        verification.proposal_id == "plan_energy_001_a",
-        "verification_proposal_lineage_mismatch",
+        &verification.proposal_id,
+        "plan_",
         "/proposal_id",
     )?;
-    require_eq(
+    require_prefixed_slug(
         SchemaName::PlanVerification,
-        verification.verifier_runner_id == "actor_verifier_001",
-        "verification_runner_lineage_mismatch",
+        &verification.verifier_runner_id,
+        "actor_",
         "/verifier_runner_id",
     )?;
     require_eq(
@@ -806,7 +809,14 @@ fn reject_unsupported_schema_keywords(
                     "/schemas",
                 ));
             }
-            for keyword in ["minItems", "maxItems", "minLength", "maxLength"] {
+            for keyword in [
+                "minItems",
+                "maxItems",
+                "minLength",
+                "maxLength",
+                "minimum",
+                "maximum",
+            ] {
                 if object
                     .get(keyword)
                     .is_some_and(|numeric_value| numeric_value.as_u64().is_none())
@@ -872,6 +882,13 @@ fn reject_unsupported_schema_keywords(
                 object,
                 "string",
                 &["pattern", "minLength", "maxLength"],
+                false,
+            )?;
+            require_type_for_keyword_family(
+                schema,
+                object,
+                "integer",
+                &["minimum", "maximum"],
                 false,
             )?;
             if object
@@ -1052,6 +1069,8 @@ fn schema_keyword_is_supported(keyword: &str) -> bool {
             | "uniqueItems"
             | "minLength"
             | "maxLength"
+            | "minimum"
+            | "maximum"
     )
 }
 
@@ -1123,12 +1142,7 @@ fn validate_schema_value(
         }
         Some("array") => validate_schema_array(schema_name, root_schema, schema, value, field_path),
         Some("string") => validate_schema_string(schema_name, schema, value, field_path),
-        Some("integer") => require_eq(
-            schema_name,
-            value.as_i64().is_some(),
-            "fixture_schema_validation_failed",
-            field_path,
-        ),
+        Some("integer") => validate_schema_integer(schema_name, schema, value, field_path),
         Some("boolean") => require_eq(
             schema_name,
             value.as_bool().is_some(),
@@ -1313,9 +1327,44 @@ fn validate_schema_string(
     Ok(())
 }
 
+fn validate_schema_integer(
+    schema_name: SchemaName,
+    schema: &Value,
+    value: &Value,
+    field_path: &str,
+) -> Result<(), SchemaError> {
+    let Some(integer) = value.as_i64() else {
+        return Err(SchemaError::new(
+            schema_name,
+            "fixture_schema_validation_failed",
+            field_path,
+        ));
+    };
+    if let Some(minimum) = schema.get("minimum").and_then(Value::as_i64) {
+        require_eq(
+            schema_name,
+            integer >= minimum,
+            "fixture_schema_validation_failed",
+            field_path,
+        )?;
+    }
+    if let Some(maximum) = schema.get("maximum").and_then(Value::as_i64) {
+        require_eq(
+            schema_name,
+            integer <= maximum,
+            "fixture_schema_validation_failed",
+            field_path,
+        )?;
+    }
+    Ok(())
+}
+
 fn schema_pattern_matches(pattern: &str, text: &str) -> bool {
     match pattern {
+        "^[a-z][a-z0-9_-]{1,63}$" => valid_request_slug(text),
+        "^[0-9]{1,2}-[0-9]{1,2}$" => valid_age_range(text),
         "^plan_[a-z0-9_-]+$" => text.strip_prefix("plan_").is_some_and(valid_ascii_slug),
+        "^pvtask_[a-z0-9_-]+$" => text.strip_prefix("pvtask_").is_some_and(valid_ascii_slug),
         "^actor_[a-z0-9_-]+$" => text.strip_prefix("actor_").is_some_and(valid_ascii_slug),
         "^pverify_[a-z0-9_-]+$" => text.strip_prefix("pverify_").is_some_and(valid_ascii_slug),
         "^no_arbitrary_[a-z]{6}$" => text.strip_prefix("no_arbitrary_").is_some_and(|suffix| {
@@ -1339,13 +1388,38 @@ fn schema_pattern_matches(pattern: &str, text: &str) -> bool {
 fn schema_pattern_is_supported(pattern: &str) -> bool {
     matches!(
         pattern,
-        "^plan_[a-z0-9_-]+$"
+        "^[a-z][a-z0-9_-]{1,63}$"
+            | "^[0-9]{1,2}-[0-9]{1,2}$"
+            | "^plan_[a-z0-9_-]+$"
+            | "^pvtask_[a-z0-9_-]+$"
             | "^actor_[a-z0-9_-]+$"
             | "^pverify_[a-z0-9_-]+$"
             | "^no_arbitrary_[a-z]{6}$"
             | PLAN_VERIFICATION_SAFE_FINDING_MESSAGE_PATTERN
             | "^[a-z0-9_-]+$"
     )
+}
+
+fn valid_request_slug(text: &str) -> bool {
+    (2..=64).contains(&text.len())
+        && text
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_lowercase())
+        && valid_ascii_slug(text)
+}
+
+fn valid_age_range(text: &str) -> bool {
+    let Some((start, end)) = text.split_once('-') else {
+        return false;
+    };
+    let Ok(start) = start.parse::<u8>() else {
+        return false;
+    };
+    let Ok(end) = end.parse::<u8>() else {
+        return false;
+    };
+    start <= end && start > 0 && end <= 19
 }
 
 fn valid_ascii_slug(text: &str) -> bool {
@@ -1671,6 +1745,7 @@ fn contains_unsafe_safe_text_marker(value: &str) -> bool {
         || lower.contains("ssh/");
     value.contains("://")
         || value.contains('@')
+        || contains_known_secret_marker(&lower)
         || lower.contains("secret")
         || lower.contains("api_key")
         || lower.contains("token")
@@ -1685,6 +1760,21 @@ fn contains_unsafe_safe_text_marker(value: &str) -> bool {
         || lower.contains("disciplinary record")
         || lower.contains("disciplinary action")
         || has_local_path
+}
+
+fn contains_known_secret_marker(lower: &str) -> bool {
+    let compact = lower
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric() || *character == '_')
+        .collect::<String>();
+    ["sk-", "sk_live", "sk_test", "sk_proj", "ghp_", "akia"]
+        .iter()
+        .any(|marker| lower.contains(marker))
+        || [
+            "sk_live", "sk_test", "sk_proj", "sklive", "sktest", "skproj", "ghp_", "akia",
+        ]
+        .iter()
+        .any(|marker| compact.contains(marker))
 }
 
 fn validate_safe_text_list(
@@ -1720,6 +1810,24 @@ fn require_prefix(
     require_eq(
         schema,
         value.starts_with(prefix),
+        "invalid_identifier",
+        field_path,
+    )
+}
+
+fn require_prefixed_slug(
+    schema: SchemaName,
+    value: &str,
+    prefix: &str,
+    field_path: &'static str,
+) -> Result<(), SchemaError> {
+    let Some(suffix) = value.strip_prefix(prefix) else {
+        return Err(SchemaError::new(schema, "invalid_identifier", field_path));
+    };
+    let lower = value.to_ascii_lowercase();
+    require_eq(
+        schema,
+        valid_ascii_slug(suffix) && !contains_known_secret_marker(&lower),
         "invalid_identifier",
         field_path,
     )

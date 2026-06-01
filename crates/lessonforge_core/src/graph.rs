@@ -42,6 +42,7 @@ pub struct GraphValidationContext {
     pub request_id: RequestId,
     pub planning_task_id: PlanningTaskId,
     pub planner_actor_id: ActorId,
+    pub planner_operator_account_id: String,
     pub scope_id: String,
     pub subject: String,
     pub topic: String,
@@ -72,6 +73,7 @@ pub struct ProposedTaskGraphRecord {
     request_id: RequestId,
     planning_task_id: PlanningTaskId,
     planner_actor_id: ActorId,
+    planner_operator_account_id: String,
     scope_id: String,
     schema_version: String,
     central_validator_version: String,
@@ -95,6 +97,7 @@ impl ProposedTaskGraphRecord {
         self.request_id = context.request_id.clone();
         self.planning_task_id = context.planning_task_id.clone();
         self.planner_actor_id = context.planner_actor_id.clone();
+        self.planner_operator_account_id = context.planner_operator_account_id.clone();
         self.plan_verification_task_id = None;
         self.mvp_policy_fingerprint = None;
     }
@@ -139,6 +142,21 @@ impl ProposedTaskGraphRecord {
             return Err(GraphPolicyError::new(
                 "planner_cannot_verify_own_proposal",
                 "/verification/verifier_actor_id",
+            ));
+        }
+        if self.planner_operator_account_id.is_empty()
+            || evidence.planner_operator_account_id != self.planner_operator_account_id
+            || evidence.verifier_operator_account_id.is_empty()
+        {
+            return Err(GraphPolicyError::new(
+                "verification_operator_provenance_mismatch",
+                "/verification/operator_provenance",
+            ));
+        }
+        if evidence.verifier_operator_account_id == self.planner_operator_account_id {
+            return Err(GraphPolicyError::new(
+                "planner_operator_cannot_verify_own_proposal",
+                "/verification/verifier_operator_account_id",
             ));
         }
         if evidence.verifier_scope_id != self.scope_id {
@@ -211,6 +229,8 @@ pub struct PlanVerificationEvidence {
     pub verification_type: String,
     pub verifier_lease_active_and_consumed: bool,
     pub verifier_actor_id: ActorId,
+    pub planner_operator_account_id: String,
+    pub verifier_operator_account_id: String,
     pub verifier_scope_id: String,
     pub outcome: PlanVerificationOutcome,
     pub blocking_findings: bool,
@@ -738,6 +758,7 @@ fn rejected_outcome(
             request_id: context.request_id.clone(),
             planning_task_id: context.planning_task_id.clone(),
             planner_actor_id: context.planner_actor_id.clone(),
+            planner_operator_account_id: context.planner_operator_account_id.clone(),
             scope_id: context.scope_id.clone(),
             schema_version: MVP_SCHEMA_VERSION.to_owned(),
             central_validator_version: CENTRAL_VALIDATOR_VERSION.to_owned(),
@@ -762,6 +783,7 @@ fn proposal_record(
         request_id: RequestId::try_from(submitted.request_id.as_str())?,
         planning_task_id: PlanningTaskId::try_from(submitted.planning_task_id.as_str())?,
         planner_actor_id: ActorId::try_from(submitted.planner_runner_id.as_str())?,
+        planner_operator_account_id: context.planner_operator_account_id.clone(),
         scope_id: context.scope_id.clone(),
         schema_version: submitted.schema_version.clone(),
         central_validator_version: CENTRAL_VALIDATOR_VERSION.to_owned(),
